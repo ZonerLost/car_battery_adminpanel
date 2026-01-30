@@ -1,5 +1,4 @@
-
-import React, { useState } from "react";
+import { useState } from "react";
 import { FiMail, FiLock, FiEye, FiEyeOff } from "react-icons/fi";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -32,30 +31,17 @@ const LoginPage = () => {
     setIsSubmitting(true);
 
     try {
-      // TODO: replace with real API call
-      await new Promise((res) => setTimeout(res, 800));
-      console.log("Login with", values);
-
-      // fake token + user for now
-      const token = "fake-jwt-token";
-      const user = { email: values.email };
-
-      login({ token, user });
-
-      // redirect to page user wanted or dashboard
+      await login(values.email, values.password);
       navigate(from, { replace: true });
     } catch (err) {
       console.error(err);
-      // TODO: show error toast
+      // TODO: toast(err.message)
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleGoogleSignIn = () => {
-    // TODO: integrate Google OAuth
-    console.log("Google sign-in clicked");
-  };
+
 
   return (
     <>
@@ -69,7 +55,7 @@ const LoginPage = () => {
           />
 
           {/* Dark overlay + caption */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex flex-col justify-end p-8">
+          <div className="absolute inset-0 bg-linear-to-t from-black/70 via-black/20 to-transparent flex flex-col justify-end p-8">
             <p className="max-w-md text-sm text-slate-100 mb-6">
               Empower first responders with accurate, real-time data - your updates keep lives safer.
             </p>
@@ -171,26 +157,7 @@ const LoginPage = () => {
                 {isSubmitting ? "Signing In..." : "Sign In"}
               </Button>
 
-              {/* Divider */}
-              <div className="flex items-center gap-4 text-[11px] text-slate-400">
-                <div className="h-px flex-1 bg-slate-200" />
-                <span>OR</span>
-                <div className="h-px flex-1 bg-slate-200" />
-              </div>
 
-              {/* Google button */}
-              <button
-                type="button"
-                onClick={handleGoogleSignIn}
-                className="flex w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white py-2.5 text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-              >
-                <img
-                  src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-                  alt="Google"
-                  className="h-4 w-4"
-                />
-                <span>Google</span>
-              </button>
             </form>
 
             {/* Footer text */}

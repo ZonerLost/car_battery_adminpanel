@@ -1,36 +1,68 @@
-import React, { useState, useEffect } from "react";
+/* eslint-disable react-hooks/set-state-in-effect */
+import React, { useEffect, useMemo, useState } from "react";
 import Modal from "../shared/Modal";
 import FormRow from "../shared/FormRow";
 import TextField from "../shared/TextField";
 import SelectField from "../shared/SelectField";
 import Button from "../shared/Button";
 
-const emptyForm = {
-  name: "",
-  email: "",
-  role: "",
+const emptyForm = { name: "", email: "", status: "active" };
+
+const isValidEmail = (value) => {
+  const v = String(value || "").trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 };
 
-const AddRoleModal = ({ isOpen, onClose, onSubmit }) => {
+const AddRoleModal = ({
+  isOpen,
+  onClose,
+  onSubmit,
+  mode = "create", // "create" | "edit"
+  initialValues = null,
+  loading = false,
+}) => {
   const [values, setValues] = useState(emptyForm);
+  const [error, setError] = useState("");
+
+  const title = useMemo(() => (mode === "edit" ? "Edit User" : "Add New User"), [mode]);
+  const submitLabel = useMemo(() => (mode === "edit" ? "Save Changes" : "Save & Continue"), [mode]);
 
   useEffect(() => {
-    if (isOpen) setValues(emptyForm);
-  }, [isOpen]);
+    if (!isOpen) return;
+    setError("");
+    setValues(
+      initialValues
+        ? {
+            name: initialValues.name || "",
+            email: initialValues.email || "",
+            status: initialValues.status || "active",
+          }
+        : emptyForm
+    );
+  }, [isOpen, initialValues]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setValues((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
-    if (!values.name || !values.email || !values.role) return;
-    onSubmit(values);
+    setError("");
+
+    const name = String(values.name || "").trim();
+    const email = String(values.email || "").trim().toLowerCase();
+    const status = values.status || "active";
+
+    if (!name) return setError("Name is required.");
+    if (!email || !isValidEmail(email)) return setError("Enter a valid email.");
+
+    const payload = { name, email, status };
+    await onSubmit(payload);
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Add New Role" size="md">
+    <Modal isOpen={isOpen} onClose={onClose} title={title} size="md">
       <form onSubmit={handleSave} className="space-y-3">
         <FormRow className="md:grid-cols-1">
           <TextField
@@ -39,6 +71,7 @@ const AddRoleModal = ({ isOpen, onClose, onSubmit }) => {
             value={values.name}
             onChange={handleChange}
             placeholder="Enter name i.e. Kashan"
+            disabled={loading}
           />
         </FormRow>
 
@@ -50,23 +83,25 @@ const AddRoleModal = ({ isOpen, onClose, onSubmit }) => {
             onChange={handleChange}
             placeholder="Enter email i.e. maherkashan7@gmail.com"
             type="email"
+            disabled={loading}
           />
         </FormRow>
 
         <FormRow className="md:grid-cols-1">
           <SelectField
-            label="Role"
-            name="role"
-            value={values.role}
+            label="Status"
+            name="status"
+            value={values.status}
             onChange={handleChange}
             options={[
-              { label: "Manager", value: "Manager" },
-              { label: "Staff", value: "Staff" },
-              { label: "Viewer", value: "Viewer" },
+              { label: "Active", value: "active" },
+              { label: "Suspended", value: "suspended" },
             ]}
-            placeholder="Select role"
+            disabled={loading}
           />
         </FormRow>
+
+        {error ? <p className="text-xs text-red-600">{error}</p> : null}
 
         <div className="mt-4 flex flex-col sm:flex-row justify-between gap-2">
           <Button
@@ -75,11 +110,12 @@ const AddRoleModal = ({ isOpen, onClose, onSubmit }) => {
             size="md"
             fullWidth
             onClick={onClose}
+            disabled={loading}
           >
             Cancel
           </Button>
-          <Button type="submit" size="md" fullWidth>
-            Save &amp; Continue
+          <Button type="submit" size="md" fullWidth disabled={loading}>
+            {loading ? "Saving..." : submitLabel}
           </Button>
         </div>
       </form>

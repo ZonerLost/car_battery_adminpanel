@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   FiGrid,
@@ -19,16 +19,44 @@ const navItems = [
   { label: "Settings", icon: FiSettings, to: "/settings" },
 ];
 
+function humanizeFromEmail(email) {
+  if (!email) return "Admin";
+  const local = String(email).split("@")[0] || "admin";
+  const cleaned = local.replace(/[._-]+/g, " ").trim();
+  if (!cleaned) return "Admin";
+  return cleaned
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function getAvatarLetter(name, email) {
+  const source = (name || email || "A").trim();
+  return source.charAt(0).toUpperCase();
+}
+
 const Sidebar = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { user, loading, logout } = useAuth();
+
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  const handleConfirmLogout = () => {
-    logout(); // clear auth + localStorage
-    navigate("/login", { replace: true });
-    setShowLogoutConfirm(false);
-    onClose?.();
+  const profile = useMemo(() => {
+    const email = user?.email || "";
+    const name = user?.displayName || humanizeFromEmail(email);
+    const avatarLetter = getAvatarLetter(name, email);
+    return { name, email, avatarLetter };
+  }, [user]);
+
+  const handleConfirmLogout = async () => {
+    try {
+      await logout(); // Firebase signOut
+      navigate("/login", { replace: true });
+    } finally {
+      setShowLogoutConfirm(false);
+      onClose?.();
+    }
   };
 
   return (
@@ -57,12 +85,15 @@ const Sidebar = ({ isOpen, onClose }) => {
         <div className="p-3">
           <div className="bg-[#F8554A] rounded-xl p-3 flex items-center gap-3 shadow-sm">
             <div className="h-10 w-10 rounded-full bg-white/90 flex items-center justify-center text-sm font-semibold text-[#E53935]">
-              A
+              {profile.avatarLetter}
             </div>
-            <div className="flex flex-col">
-              <span className="text-xs font-semibold leading-tight">admin</span>
-              <span className="text-[10px] text-white/80 leading-tight">
-                admin@example.com
+
+            <div className="flex flex-col min-w-0">
+              <span className="text-xs font-semibold leading-tight truncate">
+                {loading ? "Loading..." : profile.name}
+              </span>
+              <span className="text-[10px] text-white/80 leading-tight truncate">
+                {loading ? "" : profile.email || "—"}
               </span>
             </div>
           </div>
@@ -98,6 +129,7 @@ const Sidebar = ({ isOpen, onClose }) => {
 
         {/* Logout at bottom */}
         <button
+          type="button"
           onClick={() => setShowLogoutConfirm(true)}
           className="mt-auto mb-4 mx-3 flex items-center gap-3 text-xs text-white/90 hover:text-white hover:bg-white/10 rounded-lg px-3 py-2 transition-colors"
         >

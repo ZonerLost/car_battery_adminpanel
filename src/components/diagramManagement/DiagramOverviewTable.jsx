@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import TableToolbar from "../shared/TableToolbar";
 import DataTable from "../shared/DataTable";
 import Pagination from "../shared/Pagination";
@@ -7,8 +7,30 @@ import IconButton from "../shared/IconButton";
 import Button from "../shared/Button";
 import { FiEdit2, FiTrash2 } from "react-icons/fi";
 
+const missingValue = "--";
+
+const toDate = (value) => {
+  if (value?.toDate?.()) return value.toDate();
+  if (value) {
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  return null;
+};
+
+const formatYearRange = (row) => {
+  const yf = row.yearFrom ?? row.year;
+  const yt = row.yearTo ?? row.yearFrom ?? row.year;
+  if (yf && yt) return `${yf}-${yt}`;
+  if (yf) return yf;
+  return missingValue;
+};
+
+const getDiagramStatus = (row) => row.diagramStatus || (row.diagramUrl ? "uploaded" : "missing");
+
 const DiagramOverviewTable = ({
   diagrams,
+  loading,
   onAddDiagram,
   onEditDiagram,
   onDeleteDiagram,
@@ -20,10 +42,14 @@ const DiagramOverviewTable = ({
 
   const filtered = useMemo(() => {
     return diagrams.filter((d) => {
-      const searchText = `${d.make} ${d.model} ${d.year}`.toLowerCase();
+      const searchText = `${d.make} ${d.model} ${d.yearFrom || ""} ${d.yearTo || ""} ${d.location || ""}`
+        .toLowerCase()
+        .trim();
       const matchesSearch = searchText.includes(search.toLowerCase());
-      const matchesStatus =
-        statusFilter === "all" ? true : d.diagramStatus === statusFilter;
+
+      const diagramStatus = getDiagramStatus(d);
+      const matchesStatus = statusFilter === "all" ? true : diagramStatus === statusFilter;
+
       return matchesSearch && matchesStatus;
     });
   }, [diagrams, search, statusFilter]);
@@ -32,45 +58,24 @@ const DiagramOverviewTable = ({
   const pageRows = filtered.slice(startIndex, startIndex + pageSize);
 
   const renderDiagramStatus = (row) => {
-    if (row.diagramStatus === "uploaded") {
-      return <StatusPill status="success" label="Uploaded" />;
-    }
-    if (row.diagramStatus === "missing") {
-      return <StatusPill status="missing" label="Missing" />;
-    }
-    return <span className="text-xs text-slate-500">—</span>;
-  };
-
-  const renderMarkerStatus = (row) => {
-    if (row.markerStatus === "set") {
-      return <StatusPill status="success" label="Set" />;
-    }
-    if (row.markerStatus === "pending") {
-      return <StatusPill status="pending" label="Pending" />;
-    }
-    if (row.markerStatus === "not-assigned") {
-      return <StatusPill status="inactive" label="Not Assigned" />;
-    }
-    return <span className="text-xs text-slate-500">—</span>;
+    const status = getDiagramStatus(row);
+    if (status === "uploaded") return <StatusPill status="success" label="Uploaded" />;
+    if (status === "pending") return <StatusPill status="pending" label="Pending" />;
+    return <StatusPill status="missing" label="Missing" />;
   };
 
   const columns = [
     { key: "make", label: "Make" },
     { key: "model", label: "Model" },
-    { key: "year", label: "Year" },
-    {
-      key: "diagramStatus",
-      label: "Diagram Status",
-      render: renderDiagramStatus,
-    },
-    {
-      key: "markerStatus",
-      label: "Marker Status",
-      render: renderMarkerStatus,
-    },
+    { key: "year", label: "Year Range", render: formatYearRange },
+    { key: "diagramStatus", label: "Diagram Status", render: renderDiagramStatus },
     {
       key: "lastUpdated",
       label: "Last Updated",
+      render: (row) => {
+        const d = toDate(row.updatedAt);
+        return d ? d.toLocaleDateString() : missingValue;
+      },
     },
     {
       key: "actions",
@@ -81,11 +86,7 @@ const DiagramOverviewTable = ({
             <FiEdit2 className="text-[13px]" />
           </IconButton>
 
-          <IconButton
-            size="sm"
-            variant="danger"
-            onClick={() => onDeleteDiagram(row)}
-          >
+          <IconButton size="sm" variant="danger" onClick={() => onDeleteDiagram(row)}>
             <FiTrash2 className="text-[13px]" />
           </IconButton>
         </div>
@@ -96,9 +97,12 @@ const DiagramOverviewTable = ({
   return (
     <div className="space-y-3">
       <TableToolbar
-        searchPlaceholder="Search by Name or Email"
+        searchPlaceholder="Search by make/model/year/location"
         searchValue={search}
-        onSearchChange={setSearch}
+        onSearchChange={(v) => {
+          setSearch(v);
+          setPage(1);
+        }}
         leftContent={
           <div className="flex flex-wrap items-center gap-2">
             <select
@@ -111,15 +115,9 @@ const DiagramOverviewTable = ({
             >
               <option value="all">Status</option>
               <option value="uploaded">Uploaded</option>
+              <option value="pending">Pending</option>
               <option value="missing">Missing</option>
             </select>
-
-            <button
-              type="button"
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600 hover:bg-slate-50"
-            >
-              Year Range
-            </button>
           </div>
         }
         rightContent={
@@ -130,7 +128,7 @@ const DiagramOverviewTable = ({
       />
 
       <div className="mt-1 overflow-x-auto">
-        <DataTable columns={columns} data={pageRows} />
+        <DataTable columns={columns} data={pageRows} loading={loading} />
       </div>
 
       <Pagination

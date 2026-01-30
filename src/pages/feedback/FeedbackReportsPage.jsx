@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+/* eslint-disable no-unused-vars */
+/* eslint-disable react-hooks/exhaustive-deps */
+import { useEffect, useMemo, useState } from "react";
 import PageContainer from "../../components/shared/PageContainer";
-import PageHeader from "../../components/shared/PageHeader";
 import SectionCard from "../../components/shared/SectionCard";
 import ChartCard from "../../components/shared/ChartCard";
 import ConfirmDialog from "../../components/shared/ConfirmDialog";
@@ -10,130 +11,141 @@ import ReportTypeDistributionChart from "../../components/feedbackReports/Report
 import MonthlyReportsTrendChart from "../../components/feedbackReports/MonthlyReportsTrendChart";
 import ReportsOverviewTable from "../../components/feedbackReports/ReportsOverviewTable";
 
-// dummy data – swap with API later
-const INITIAL_REPORTS = [
-  {
-    id: "RPT-1023",
-    type: "Incorrect Location",
-    car: "Toyota Corolla 2015",
-    submittedBy: "ali.hassan@gmail.com",
-    date: "Aug 5",
-    status: "pending", // pending | approved | rejected
-  },
-  {
-    id: "RPT-1024",
-    type: "Missing Car",
-    car: "Honda Civic 2018",
-    submittedBy: "jane.doe@example.com",
-    date: "Aug 6",
-    status: "pending",
-  },
-  {
-    id: "RPT-1025",
-    type: "Incorrect Location",
-    car: "Ford Fiesta 2020",
-    submittedBy: "john.smith@example.com",
-    date: "Aug 7",
-    status: "rejected",
-  },
-  {
-    id: "RPT-1026",
-    type: "Missing Car",
-    car: "Chevrolet Malibu 2019",
-    submittedBy: "emily.johnson@example.com",
-    date: "Aug 7",
-    status: "pending",
-  },
-  {
-    id: "RPT-1027",
-    type: "General Feedback",
-    car: "Nissan Altima 2018",
-    submittedBy: "mike.brown@example.com",
-    date: "Aug 11",
-    status: "approved",
-  },
-  {
-    id: "RPT-1028",
-    type: "General Feedback",
-    car: "Subaru Outback 2016",
-    submittedBy: "susan.lee@example.com",
-    date: "Aug 12",
-    status: "pending",
-  },
-];
+import { approveReport, rejectReport, deleteCarDiagramForReport } from "../../api/FeedbackReports/FeedbackReports.helper";
+import { subscribeFeedbackReports } from "../../api/reports/reportsHelper";
+import { REPORT_RANGE_OPTIONS, buildMonthlyReportsTrend, toDateSafe } from "../../lib/dashboard/aggregateDashboard";
 
-const METRICS = [
-  {
-    id: "totalReports",
-    title: "Total Reports",
-    value: "340",
-    deltaLabel: "10% vs Last Month",
-    deltaType: "up",
-  },
-  {
-    id: "pendingReviews",
-    title: "Pending Reviews",
-    value: "85",
-    deltaLabel: "10% vs Last Month",
-    deltaType: "up",
-  },
-  {
-    id: "approvedUpdates",
-    title: "Approved Updates",
-    value: "210",
-    deltaLabel: "32% vs Last Month",
-    deltaType: "up",
-  },
-  {
-    id: "rejectedReports",
-    title: "Rejected Reports",
-    value: "45",
-    deltaLabel: "20% vs Last Month",
-    deltaType: "up",
-  },
-];
+const RANGE_OPTIONS = REPORT_RANGE_OPTIONS;
 
-const FeedbackReportsPage = () => {
-  const [reports, setReports] = useState(INITIAL_REPORTS);
+const rangeStartFromKey = (range, now = new Date()) => {
+  if (range === "thisMonth") return new Date(now.getFullYear(), now.getMonth(), 1);
+  if (range === "last3Months") return new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  if (range === "thisYear") return new Date(now.getFullYear(), 0, 1);
+  return null;
+};
+
+const monthKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+
+const pctDelta = (current, prev) => {
+  if (!prev) return current ? 100 : 0;
+  return Math.round(((current - prev) / prev) * 100);
+};
+
+export default function FeedbackReportsPage() {
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [range, setRange] = useState("thisMonth");
 
   const [confirmState, setConfirmState] = useState({
     open: false,
-    type: null, // "approve" | "reject" | "delete-diagram"
+    type: null,
     report: null,
   });
 
-  const openConfirm = (type, report) =>
-    setConfirmState({ open: true, type, report });
+  const openConfirm = (type, report) => setConfirmState({ open: true, type, report });
+  const closeConfirm = () => setConfirmState({ open: false, type: null, report: null });
 
-  const closeConfirm = () =>
-    setConfirmState({ open: false, type: null, report: null });
+  useEffect(() => {
+    setLoading(true);
+    const unsubscribe = subscribeFeedbackReports(
+      {},
+      (rows) => {
+        setReports(rows || []);
+        setLoading(false);
+      },
+      (err) => {
+        console.error(err);
+        setLoading(false);
+      }
+    );
 
-  const handleConfirmAction = () => {
-    const { type, report } = confirmState;
-    if (!report) return;
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
+  }, []);
 
-    if (type === "approve") {
-      setReports((prev) =>
-        prev.map((r) =>
-          r.id === report.id ? { ...r, status: "approved" } : r
-        )
-      );
-    } else if (type === "reject") {
-      setReports((prev) =>
-        prev.map((r) =>
-          r.id === report.id ? { ...r, status: "rejected" } : r
-        )
-      );
-    } else if (type === "delete-diagram") {
-      // In real app you'd call API to delete diagram here
-      // For now we just log or leave data unchanged
-      console.log("Delete diagram for report", report.id);
-    }
+  const now = new Date();
+  const rangeStart = useMemo(() => rangeStartFromKey(range, now), [range, now]);
 
-    closeConfirm();
-  };
+  const filteredByRange = useMemo(
+    () =>
+      reports.filter((r) => {
+        const d = toDateSafe(r.createdAt) || toDateSafe(r.updatedAt);
+        if (!rangeStart) return true;
+        return d ? d >= rangeStart : false;
+      }),
+    [reports, rangeStart]
+  );
 
-  const confirmConfig = (() => {
+  const metrics = useMemo(() => {
+    const currentMonthKey = monthKey(now);
+    const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonthKey = monthKey(prevMonthDate);
+
+    const curMonth = reports.filter((r) => {
+      const d = toDateSafe(r.createdAt) || toDateSafe(r.updatedAt);
+      return d ? monthKey(d) === currentMonthKey : false;
+    });
+
+    const prevMonth = reports.filter((r) => {
+      const d = toDateSafe(r.createdAt) || toDateSafe(r.updatedAt);
+      return d ? monthKey(d) === prevMonthKey : false;
+    });
+
+    const curPending = curMonth.filter((r) => r.status === "pending").length;
+    const prevPending = prevMonth.filter((r) => r.status === "pending").length;
+
+    const curApproved = curMonth.filter((r) => r.status === "approved").length;
+    const prevApproved = prevMonth.filter((r) => r.status === "approved").length;
+
+    const curRejected = curMonth.filter((r) => r.status === "rejected").length;
+    const prevRejected = prevMonth.filter((r) => r.status === "rejected").length;
+
+    return [
+      {
+        id: "totalReports",
+        title: "Total Reports",
+        value: String(reports.length),
+        deltaLabel: `${pctDelta(curMonth.length, prevMonth.length)}% vs Last Month`,
+        deltaType: curMonth.length >= prevMonth.length ? "up" : "down",
+      },
+      {
+        id: "pendingReviews",
+        title: "Pending Reviews",
+        value: String(reports.filter((r) => r.status === "pending").length),
+        deltaLabel: `${pctDelta(curPending, prevPending)}% vs Last Month`,
+        deltaType: curPending >= prevPending ? "up" : "down",
+      },
+      {
+        id: "approvedUpdates",
+        title: "Approved Updates",
+        value: String(reports.filter((r) => r.status === "approved").length),
+        deltaLabel: `${pctDelta(curApproved, prevApproved)}% vs Last Month`,
+        deltaType: curApproved >= prevApproved ? "up" : "down",
+      },
+      {
+        id: "rejectedReports",
+        title: "Rejected Reports",
+        value: String(reports.filter((r) => r.status === "rejected").length),
+        deltaLabel: `${pctDelta(curRejected, prevRejected)}% vs Last Month`,
+        deltaType: curRejected >= prevRejected ? "up" : "down",
+      },
+    ];
+  }, [reports, now]);
+
+  const typeDistribution = useMemo(() => {
+    const counts = new Map();
+    filteredByRange.forEach((r) => {
+      const key = r.type || "Unknown";
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+
+    return Array.from(counts.entries()).map(([name, value]) => ({ name, value }));
+  }, [filteredByRange]);
+
+  const monthlyTrend = useMemo(() => buildMonthlyReportsTrend(reports, range), [reports, range]);
+
+  const confirmConfig = useMemo(() => {
     const { type } = confirmState;
     if (!type) return null;
 
@@ -141,77 +153,109 @@ const FeedbackReportsPage = () => {
       return {
         title: "Approve Report",
         description:
-          "Are you sure you want to approve this report? Approving will confirm the user’s correction and update the car’s record in the database.",
+          "Approve this report? This marks it as approved and reduces pending counts. Apply data fixes in Car Database / Diagram Management if needed.",
         confirmLabel: "Approve",
         cancelLabel: "Cancel",
-        variant: "primary", // will use normal primary button
+        variant: "primary",
       };
     }
+
     if (type === "reject") {
       return {
         title: "Reject Report",
-        description:
-          "Are you sure you want to reject this report? The suggested update will not be applied to the database.",
-        confirmLabel: "Reject Report",
+        description: "Reject this report? The suggested update will not be applied and it will be marked as rejected.",
+        confirmLabel: "Reject",
         cancelLabel: "Cancel",
         variant: "danger",
       };
     }
+
     return {
       title: "Delete Diagram",
       description:
-        "This will remove the uploaded car diagram and its assigned battery marker. The car entry will remain in the database, but it will no longer display an image in the app until a new diagram is added.",
+        "This will remove the uploaded car diagram and its battery marker. The car entry will remain, but the image will disappear until a new diagram is uploaded.",
       confirmLabel: "Delete Diagram",
       cancelLabel: "Cancel",
       variant: "danger",
     };
-  })();
+  }, [confirmState]);
+
+  const handleConfirmAction = async () => {
+    const { type, report } = confirmState;
+    if (!report) return;
+
+    try {
+      if (type === "approve") {
+        await approveReport(report.id);
+      } else if (type === "reject") {
+        await rejectReport(report.id);
+      } else if (type === "delete-diagram") {
+        await deleteCarDiagramForReport({ carId: report.carId });
+      }
+
+      closeConfirm();
+      await load();
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   return (
     <>
       <PageContainer>
-        {/* <PageHeader title="Feedback & Report" /> */}
+        <FeedbackMetrics metrics={metrics} />
 
-        {/* Metrics */}
-        <FeedbackMetrics metrics={METRICS} />
-
-        {/* Charts row */}
         <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
           <ChartCard
             title="Report Type Distribution"
             rightSlot={
-              <button className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600">
-                This Month
-              </button>
+              <select
+                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600"
+                value={range}
+                onChange={(e) => setRange(e.target.value)}
+              >
+                {RANGE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
             }
           >
-            <ReportTypeDistributionChart />
+            <ReportTypeDistributionChart data={typeDistribution} loading={loading} />
           </ChartCard>
 
           <ChartCard
             title="Monthly Reports Trend"
             rightSlot={
-              <button className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600">
-                This Month
-              </button>
+              <select
+                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600"
+                value={range}
+                onChange={(e) => setRange(e.target.value)}
+              >
+                {RANGE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
             }
           >
-            <MonthlyReportsTrendChart />
+            <MonthlyReportsTrendChart data={monthlyTrend} loading={loading} />
           </ChartCard>
         </div>
 
-        {/* Overview table */}
         <SectionCard title="Overview" className="mt-5">
           <ReportsOverviewTable
             reports={reports}
-            onApprove={(report) => openConfirm("approve", report)}
-            onReject={(report) => openConfirm("reject", report)}
-            onDeleteDiagram={(report) => openConfirm("delete-diagram", report)}
+            loading={loading}
+            onApprove={(r) => openConfirm("approve", r)}
+            onReject={(r) => openConfirm("reject", r)}
+            onDeleteDiagram={(r) => openConfirm("delete-diagram", r)}
           />
         </SectionCard>
       </PageContainer>
 
-      {/* Approve / Reject / Delete Diagram dialogs */}
       {confirmConfig && (
         <ConfirmDialog
           isOpen={confirmState.open}
@@ -226,6 +270,4 @@ const FeedbackReportsPage = () => {
       )}
     </>
   );
-};
-
-export default FeedbackReportsPage;
+}

@@ -1,7 +1,5 @@
-
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import PageContainer from "../../components/shared/PageContainer";
-import PageHeader from "../../components/shared/PageHeader";
 import DashboardMetrics from "../../components/dashboard/DashboardMetrics";
 import SectionCard from "../../components/shared/SectionCard";
 import ChartCard from "../../components/shared/ChartCard";
@@ -9,170 +7,91 @@ import CarCoverageChart from "../../components/dashboard/CarCoverageChart";
 import MonthlyReportsChart from "../../components/dashboard/MonthlyReportsChart";
 import OverviewTable from "../../components/dashboard/OverviewTable";
 import ConfirmDialog from "../../components/shared/ConfirmDialog";
+import useDashboardData from "../../hooks/useDashboardData";
+import {
+  DASHBOARD_RANGE_OPTIONS,
+  REPORT_RANGE_OPTIONS,
+  buildCoverageByType,
+  buildDashboardMetrics,
+  buildMonthlyReportsTrend,
+  buildOverviewRows,
+} from "../../lib/dashboard/aggregateDashboard";
+import { deleteCarEntry } from "../../api/shared/carEntries.helper";
 
-// Sample rows – same shape as before
-const INITIAL_ROWS = [
-  {
-    id: 1,
-    make: "Toyota",
-    model: "Corolla",
-    year: 2018,
-    diagramStatus: "uploaded",
-    markerStatus: "pending",
-    lastUploaded: "Jan 1",
-  },
-  {
-    id: 2,
-    make: "Honda",
-    model: "Civic",
-    year: 2019,
-    diagramStatus: "missing",
-    markerStatus: "not-assigned",
-    lastUploaded: "Feb 3",
-  },
-  {
-    id: 3,
-    make: "Ford",
-    model: "Focus",
-    year: 2016,
-    diagramStatus: "uploaded",
-    markerStatus: "success",
-    lastUploaded: "Mar 9",
-  },
-  {
-    id: 4,
-    make: "Chevrolet",
-    model: "Camaro",
-    year: 2017,
-    diagramStatus: "missing",
-    markerStatus: "pending",
-    lastUploaded: "Apr 1",
-  },
-  {
-    id: 5,
-    make: "Nissan",
-    model: "Sentra",
-    year: 2018,
-    diagramStatus: "uploaded",
-    markerStatus: "success",
-    lastUploaded: "Jun 1",
-  },
-  {
-    id: 6,
-    make: "Hyundai",
-    model: "Elantra",
-    year: 2020,
-    diagramStatus: "uploaded",
-    markerStatus: "success",
-    lastUploaded: "Jun 5",
-  },
-];
+const RangeSelect = ({ value, onChange, options }) => (
+  <select
+    className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#E53935]"
+    value={value}
+    onChange={(e) => onChange(e.target.value)}
+  >
+    {options.map((o) => (
+      <option key={o.value} value={o.value}>
+        {o.label}
+      </option>
+    ))}
+  </select>
+);
 
 const DashboardPage = () => {
-  // metrics – unchanged
-  const metrics = [
-    {
-      id: "cars",
-      title: "Total Cars in Database",
-      value: "2,450",
-      deltaLabel: "10% vs Last Month",
-      deltaType: "up",
-    },
-    {
-      id: "diagrams",
-      title: "Diagrams Uploaded",
-      value: "2,100",
-      deltaLabel: "32% vs Last Month",
-      deltaType: "up",
-    },
-    {
-      id: "markers",
-      title: "Marking Mistakes",
-      value: "130",
-      deltaLabel: "20% vs Last Month",
-      deltaType: "down",
-    },
-    {
-      id: "pending",
-      title: "Pending Reports",
-      value: "85",
-      deltaLabel: "20% vs Last Month",
-      deltaType: "up",
-    },
-  ];
+  const { cars, reports, loading, refresh } = useDashboardData();
 
-  // ---- table rows state ----
-  const [rows, setRows] = useState(INITIAL_ROWS);
+  const [coverageRange, setCoverageRange] = useState("thisMonth");
+  const [reportsRange, setReportsRange] = useState("thisYear");
 
-  // ---- delete confirm dialog state ----
-  const [confirmState, setConfirmState] = useState({
-    open: false,
-    row: null,
-  });
+  const [confirmState, setConfirmState] = useState({ open: false, row: null });
 
-  const openDeleteConfirm = (row) =>
-    setConfirmState({ open: true, row });
+  const metrics = useMemo(() => buildDashboardMetrics(cars, reports), [cars, reports]);
+  const coverageData = useMemo(() => buildCoverageByType(cars, coverageRange), [cars, coverageRange]);
+  const reportsTrend = useMemo(() => buildMonthlyReportsTrend(reports, reportsRange), [reports, reportsRange]);
+  const tableRows = useMemo(() => buildOverviewRows(cars), [cars]);
 
-  const closeDeleteConfirm = () =>
-    setConfirmState({ open: false, row: null });
+  const openDeleteConfirm = (row) => setConfirmState({ open: true, row });
+  const closeDeleteConfirm = () => setConfirmState({ open: false, row: null });
 
-  const handleDeleteRow = () => {
-    if (!confirmState.row) return;
-    setRows((prev) => prev.filter((r) => r.id !== confirmState.row.id));
-    closeDeleteConfirm();
+  const handleDeleteRow = async () => {
+    if (!confirmState.row?.id) return;
+    try {
+      await deleteCarEntry(confirmState.row.id);
+      await refresh();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      closeDeleteConfirm();
+    }
   };
 
   return (
     <>
       <PageContainer>
-        {/* (Optional) use header if you want – was already imported */}
-        {/* <PageHeader title="Dashboard" /> */}
-
-        {/* Metrics row */}
         <DashboardMetrics metrics={metrics} />
 
-        {/* Charts row */}
         <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
           <ChartCard
             title="Car Coverage By Type"
-            rightSlot={
-              <button className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600">
-                This Month
-              </button>
-            }
+            rightSlot={<RangeSelect value={coverageRange} onChange={setCoverageRange} options={DASHBOARD_RANGE_OPTIONS} />}
           >
-            <CarCoverageChart />
+            <CarCoverageChart data={coverageData} loading={loading} />
           </ChartCard>
 
           <ChartCard
             title="Monthly Reports Trend"
-            rightSlot={
-              <button className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600">
-                This Year
-              </button>
-            }
+            rightSlot={<RangeSelect value={reportsRange} onChange={setReportsRange} options={REPORT_RANGE_OPTIONS} />}
           >
-            <MonthlyReportsChart />
+            <MonthlyReportsChart data={reportsTrend} loading={loading} />
           </ChartCard>
         </div>
 
-        {/* Overview table */}
         <SectionCard title="Overview" className="mt-5">
-          <OverviewTable
-            rows={rows}
-            onDeleteRow={openDeleteConfirm}
-            // you can also pass onEditRow if you want later
-          />
+          <OverviewTable rows={tableRows} loading={loading} onDeleteRow={openDeleteConfirm} />
         </SectionCard>
       </PageContainer>
 
-      {/* Delete row confirm – same behavior as DiagramManagementPage */}
       <ConfirmDialog
         isOpen={confirmState.open}
         onClose={closeDeleteConfirm}
         onConfirm={handleDeleteRow}
         title="Delete Record"
-        description="Are you sure you want to delete this record from the dashboard overview? This action cannot be undone."
+        description="Delete this car record from the database? This also removes any linked diagrams and markers."
         confirmLabel="Delete"
         cancelLabel="Cancel"
         variant="danger"

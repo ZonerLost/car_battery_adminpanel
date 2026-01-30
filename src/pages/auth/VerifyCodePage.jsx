@@ -25,7 +25,7 @@ const VerifyCodePage = () => {
   }, [secondsLeft]);
 
   const handleChange = (index, value) => {
-    const digit = value.slice(-1).replace(/\D/g, ""); // only last numeric char
+    const digit = value.slice(-1).replace(/\D/g, "");
     setCode((prev) => {
       const next = [...prev];
       next[index] = digit;
@@ -118,7 +118,7 @@ const VerifyCodePage = () => {
           />
 
           {/* Dark overlay + caption */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex flex-col justify-end p-8">
+          <div className="absolute inset-0 bg-linear-to-t from-black/70 via-black/20 to-transparent flex flex-col justify-end p-8">
             <p className="max-w-md text-sm text-slate-100 mb-6">
               Every diagram you upload and every report you verify helps users
               save precious seconds.

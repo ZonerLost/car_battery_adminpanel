@@ -1,91 +1,159 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+
 import PageContainer from "../../components/shared/PageContainer";
-import PageHeader from "../../components/shared/PageHeader";
 import SectionCard from "../../components/shared/SectionCard";
+
 import SettingsProfileForm from "../../components/settings/SettingsProfileForm";
-import SettingsPreferencesForm from "../../components/settings/SettingsPreferencesForm";
 import TeamRolesSection from "../../components/settings/TeamRolesSection";
+
 import AddRoleModal from "../../components/settings/AddRoleModal";
 import ChangePasswordModal from "../../components/settings/ChangePasswordModal";
 import ConfirmDialog from "../../components/shared/ConfirmDialog";
 
-const INITIAL_MEMBERS = [
-  {
-    id: 1,
-    name: "Ali Khan",
-    email: "ali@firefighter.com",
-    role: "Manager",
-    lastActive: "30 Jun 2025",
-    status: "suspended",
-  },
-  {
-    id: 2,
-    name: "Sarah Altaf",
-    email: "sarah@firefighter.com",
-    role: "Staff",
-    lastActive: "01 Jan 2025",
-    status: "active",
-  },
-  {
-    id: 3,
-    name: "Khizar Azeem",
-    email: "khizar@firefighter.com",
-    role: "Staff",
-    lastActive: "15 Feb 2025",
-    status: "active",
-  },
-  {
-    id: 4,
-    name: "Iqbal Afridi",
-    email: "iqbal@firefighter.com",
-    role: "Staff",
-    lastActive: "10 Mar 2025",
-    status: "active",
-  },
-];
+import {
+  subscribeTeamMembers,
+  createTeamMember,
+  updateTeamMember,
+  deleteTeamMember,
+} from "../../api/settings/settingsHelper";
+
+/* -------------------------------------------------------------------------- */
+/* Helpers                                                                    */
+/* -------------------------------------------------------------------------- */
+function formatFirestoreTimestamp(ts) {
+  if (!ts) return "—";
+  // Firestore Timestamp has toDate()
+  const date = typeof ts?.toDate === "function" ? ts.toDate() : new Date(ts);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+}
 
 const SettingsPage = () => {
-  const [members, setMembers] = useState(INITIAL_MEMBERS);
-  const [isAddRoleOpen, setIsAddRoleOpen] = useState(false);
-  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
-  const [userToDeactivate, setUserToDeactivate] = useState(null);
+  const [membersRaw, setMembersRaw] = useState([]);
+  const [membersLoading, setMembersLoading] = useState(true);
 
-  const handleAddRoleSubmit = (values) => {
-    setMembers((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        name: values.name,
-        email: values.email,
-        role: values.role,
-        lastActive: "—",
-        status: "active",
+  const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+
+  const [userToDeactivate, setUserToDeactivate] = useState(null);
+  const [userToRemove, setUserToRemove] = useState(null);
+  const [userToEdit, setUserToEdit] = useState(null);
+
+  const [savingUser, setSavingUser] = useState(false);
+
+  useEffect(() => {
+    const unsub = subscribeTeamMembers(
+      (rows) => {
+        setMembersRaw(rows);
+        setMembersLoading(false);
       },
-    ]);
-    setIsAddRoleOpen(false);
+      (err) => {
+        console.error("Failed to subscribe members", err);
+        setMembersLoading(false);
+      }
+    );
+    return () => unsub?.();
+  }, []);
+
+  // Map Firestore docs -> table shape
+  const members = useMemo(() => {
+    return membersRaw.map((u) => ({
+      id: u.uid || u.id, // for table key
+      uid: u.uid || u.id,
+      name: u.fullName || "—",
+      email: u.email || "—",
+      lastActive: formatFirestoreTimestamp(u.createdAt), // you can later add lastActiveAt
+      status: u.status || "active", // optional
+      _raw: u,
+    }));
+  }, [membersRaw]);
+
+  /* ------------------------------------------------------------------------ */
+  /* Create / Edit                                                            */
+  /* ------------------------------------------------------------------------ */
+  const handleAddUserSubmit = async (values) => {
+    setSavingUser(true);
+    try {
+      await createTeamMember({
+        fullName: values.name,
+        email: values.email,
+        status: values.status,
+      });
+      setIsAddUserOpen(false);
+    } catch (e) {
+      console.error(e);
+      // optionally show toast
+    } finally {
+      setSavingUser(false);
+    }
   };
 
-  const handleDeactivateConfirm = () => {
-    if (!userToDeactivate) return;
-    setMembers((prev) =>
-      prev.map((m) =>
-        m.id === userToDeactivate.id ? { ...m, status: "suspended" } : m
-      )
-    );
-    setUserToDeactivate(null);
+  const handleEditUserSubmit = async (values) => {
+    if (!userToEdit?.uid) return;
+    setSavingUser(true);
+    try {
+      await updateTeamMember(userToEdit.uid, {
+        fullName: values.name,
+        email: values.email,
+        status: values.status,
+      });
+      setUserToEdit(null);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSavingUser(false);
+    }
+  };
+
+  /* ------------------------------------------------------------------------ */
+  /* Deactivate / Remove                                                      */
+  /* ------------------------------------------------------------------------ */
+  const handleDeactivateConfirm = async () => {
+    if (!userToDeactivate?.uid) return;
+    setSavingUser(true);
+    try {
+      await updateTeamMember(userToDeactivate.uid, { status: "suspended" });
+      setUserToDeactivate(null);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSavingUser(false);
+    }
+  };
+
+  const handleActivate = async (user) => {
+    if (!user?.uid) return;
+    setSavingUser(true);
+    try {
+      await updateTeamMember(user.uid, { status: "active" });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSavingUser(false);
+    }
+  };
+
+  const handleRemoveConfirm = async () => {
+    if (!userToRemove?.uid) return;
+    setSavingUser(true);
+    try {
+      await deleteTeamMember(userToRemove.uid);
+      setUserToRemove(null);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSavingUser(false);
+    }
   };
 
   return (
     <>
       <PageContainer>
-      
-        
-
-        {/* Top forms */}
         <div className="grid grid-cols-1 gap-5">
           <SectionCard title="Platform Profile">
             <SettingsProfileForm />
-              <button
+
+            <button
               type="button"
               onClick={() => setIsChangePasswordOpen(true)}
               className="text-xs mt-2 font-semibold text-[#E53935] hover:underline"
@@ -94,26 +162,48 @@ const SettingsPage = () => {
             </button>
           </SectionCard>
 
-          <SectionCard title="Portal & Display Preferences">
-            <SettingsPreferencesForm />
-          </SectionCard>
 
-          {/* Team & Roles */}
-          <SectionCard title="Team & Roles">
+
+          <SectionCard title="Users">
             <TeamRolesSection
+              loading={membersLoading}
               members={members}
-              onAddUserClick={() => setIsAddRoleOpen(true)}
+              onAddUserClick={() => setIsAddUserOpen(true)}
               onDeactivateClick={(user) => setUserToDeactivate(user)}
+              onActivateClick={handleActivate}
+              onEditClick={(user) => setUserToEdit(user)}
+              onRemoveClick={(user) => setUserToRemove(user)}
+              disabled={savingUser}
             />
           </SectionCard>
         </div>
       </PageContainer>
 
-      {/* Add New Role modal */}
+      {/* Add User modal (same file name, updated inside) */}
       <AddRoleModal
-        isOpen={isAddRoleOpen}
-        onClose={() => setIsAddRoleOpen(false)}
-        onSubmit={handleAddRoleSubmit}
+        isOpen={isAddUserOpen}
+        mode="create"
+        loading={savingUser}
+        onClose={() => setIsAddUserOpen(false)}
+        onSubmit={handleAddUserSubmit}
+      />
+
+      {/* Edit User modal */}
+      <AddRoleModal
+        isOpen={!!userToEdit}
+        mode="edit"
+        loading={savingUser}
+        initialValues={
+          userToEdit
+            ? {
+              name: userToEdit.name || "",
+              email: userToEdit.email || "",
+              status: userToEdit.status || "active",
+            }
+            : null
+        }
+        onClose={() => setUserToEdit(null)}
+        onSubmit={handleEditUserSubmit}
       />
 
       {/* Change Password modal */}
@@ -122,7 +212,7 @@ const SettingsPage = () => {
         onClose={() => setIsChangePasswordOpen(false)}
       />
 
-      {/* Deactivate User confirm dialog */}
+      {/* Deactivate confirm */}
       <ConfirmDialog
         isOpen={!!userToDeactivate}
         onClose={() => setUserToDeactivate(null)}
@@ -136,6 +226,24 @@ const SettingsPage = () => {
         confirmLabel="Deactivate"
         cancelLabel="Cancel"
         variant="danger"
+        loading={savingUser}
+      />
+
+      {/* Remove confirm */}
+      <ConfirmDialog
+        isOpen={!!userToRemove}
+        onClose={() => setUserToRemove(null)}
+        onConfirm={handleRemoveConfirm}
+        title="Remove User"
+        description={
+          userToRemove
+            ? `Remove ${userToRemove.name}? This will delete their record from Firestore.`
+            : ""
+        }
+        confirmLabel="Remove"
+        cancelLabel="Cancel"
+        variant="danger"
+        loading={savingUser}
       />
     </>
   );

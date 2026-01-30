@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import React, { useEffect, useState } from "react";
 import Modal from "../shared/Modal";
 import FormRow from "../shared/FormRow";
@@ -9,93 +10,75 @@ import Button from "../shared/Button";
 const EMPTY_VALUES = {
   make: "",
   model: "",
-  year: "",
+  yearFrom: "",
+  yearTo: "",
   bodyType: "",
+  location: "",
   description: "",
   status: "active",
 };
 
-/**
- * Build safe form state from props.
- * This keeps all defaults in one place and avoids undefined checks everywhere.
- */
 function buildFormValues(mode, initialValues) {
   if (mode === "edit" && initialValues) {
     return {
       make: initialValues.make ?? "",
       model: initialValues.model ?? "",
-      year:
-        initialValues.year !== undefined && initialValues.year !== null
-          ? String(initialValues.year)
-          : "",
+      yearFrom: initialValues.yearFrom != null ? String(initialValues.yearFrom) : "",
+      yearTo: initialValues.yearTo != null ? String(initialValues.yearTo) : "",
       bodyType: initialValues.bodyType ?? "",
+      location: initialValues.location ?? "",
       description: initialValues.description ?? "",
       status: initialValues.status ?? "active",
     };
   }
-
-  // add mode or no initialValues → clean form
   return { ...EMPTY_VALUES };
 }
 
 const CarEntryModal = ({ isOpen, mode = "add", initialValues, onClose, onSubmit }) => {
-  const [values, setValues] = useState(() =>
-    buildFormValues(mode, initialValues)
-  );
-  const [diagramFiles, setDiagramFiles] = useState([]);
-  const [markerFiles, setMarkerFiles] = useState([]);
+  const [values, setValues] = useState(() => buildFormValues(mode, initialValues));
 
-  // When modal opens OR mode/initialValues change, rebuild form state
+  //  2 separate files
+  const [thumbnailFile, setThumbnailFile] = useState(null);
+  const [diagramFile, setDiagramFile] = useState(null);
+  const [errors, setErrors] = useState({});
+
   useEffect(() => {
     if (!isOpen) return;
-
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setValues(buildFormValues(mode, initialValues));
-
-    // when switching to "add", reset uploads as well
-    if (mode === "add") {
-      setDiagramFiles([]);
-      setMarkerFiles([]);
-    }
+    setThumbnailFile(null);
+    setDiagramFile(null);
+    setErrors({});
   }, [isOpen, mode, initialValues]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setValues((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleDiagramUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setDiagramFiles((prev) => [...prev, file]);
-  };
-
-  const handleMarkerUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setMarkerFiles((prev) => [...prev, file]);
+    setValues((p) => ({ ...p, [name]: value }));
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    // You can add real validation here later
+    if (!diagramFile && !initialValues?.diagramUrl) {
+      setErrors((prev) => ({ ...prev, diagram: "Battery diagram is required." }));
+      return;
+    }
+
     const payload = {
       ...(initialValues || {}),
       ...values,
-      year: values.year ? Number(values.year) : undefined,
+      yearFrom: values.yearFrom ? Number(values.yearFrom) : undefined,
+      yearTo: values.yearTo ? Number(values.yearTo) : undefined,
     };
 
-    onSubmit(payload);
+    onSubmit(payload, { thumbnailFile, diagramFile });
   };
 
   const title = mode === "edit" ? "Edit Car Entry" : "Add New Car Entry";
   const primaryLabel = mode === "edit" ? "Save Changes" : "Add Car";
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={title} size="lg">
+    <Modal isOpen={isOpen} onClose={onClose} title={title} size="lg" className="hide-scrollbar">
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Car make / model */}
         <FormRow className="md:grid-cols-2 gap-4">
           <TextField
             label="Car Make"
@@ -113,16 +96,26 @@ const CarEntryModal = ({ isOpen, mode = "add", initialValues, onClose, onSubmit 
           />
         </FormRow>
 
-        {/* Year / Body type */}
         <FormRow className="md:grid-cols-2 gap-4">
           <TextField
-            label="Year"
-            name="year"
+            label="Year From"
+            name="yearFrom"
             type="number"
-            value={values.year}
+            value={values.yearFrom}
             onChange={handleChange}
-            placeholder="Enter year (e.g., 2015)"
+            placeholder="e.g., 2015"
           />
+          <TextField
+            label="Year To"
+            name="yearTo"
+            type="number"
+            value={values.yearTo}
+            onChange={handleChange}
+            placeholder="e.g., 2017 (optional)"
+          />
+        </FormRow>
+
+        <FormRow className="md:grid-cols-2 gap-4">
           <SelectField
             label="Body Type"
             name="bodyType"
@@ -133,105 +126,126 @@ const CarEntryModal = ({ isOpen, mode = "add", initialValues, onClose, onSubmit 
               { label: "SUV", value: "SUV" },
               { label: "Hatchback", value: "Hatchback" },
               { label: "Truck", value: "Truck" },
+              { label: "Other", value: "Other" },
             ]}
-            placeholder="Select body type (Sedan, SUV, Hatchback, etc.)"
+            placeholder="Select body type"
+          />
+          <SelectField
+            label="Status"
+            name="status"
+            value={values.status}
+            onChange={handleChange}
+            options={[
+              { label: "Active", value: "active" },
+              { label: "Inactive", value: "inactive" },
+            ]}
+            placeholder="Select status"
           />
         </FormRow>
 
-        {/* Description */}
+        {/*  NEW location field */}
+        <TextField
+          label="Car Location"
+          name="location"
+          value={values.location}
+          onChange={handleChange}
+          placeholder="e.g., Pakistan"
+        />
+
         <TextAreaField
           label="Battery Location Description"
           name="description"
           value={values.description}
           onChange={handleChange}
-          placeholder="Describe where the battery is located (e.g., Engine bay – right side near fuse box)"
+          placeholder="Engine bay - right side near fuse box"
           rows={4}
         />
 
-        {/* Status */}
-        <SelectField
-          label="Status"
-          name="status"
-          value={values.status}
-          onChange={handleChange}
-          options={[
-            { label: "Active", value: "active" },
-            { label: "Inactive", value: "inactive" },
-          ]}
-          placeholder="Select status (Active / Inactive)"
-        />
-
-        {/* Uploads */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Diagrams */}
-          <div>
-            <div className="flex items-center gap-1 mb-2">
-              <span className="text-[11px] font-medium text-slate-700">
-                Upload Diagram (png/jpeg/svg/webp)
-              </span>
-              <span className="text-red-500 text-[11px]">*</span>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              {diagramFiles.map((file) => (
-                <div
-                  key={file.name}
-                  className="w-28 rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-[10px] flex flex-col gap-1"
-                >
-                  <span className="truncate">{file.name}</span>
-                </div>
-              ))}
-
-              <label className="w-12 h-12 flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white cursor-pointer text-xl text-slate-400">
-                +
-                <input
-                  type="file"
-                  className="hidden"
-                  accept=".png,.jpg,.jpeg,.svg,.webp,.pdf"
-                  onChange={handleDiagramUpload}
-                />
-              </label>
-            </div>
+        {/*  Thumbnail upload */}
+        <div>
+          <div className="flex items-center gap-1 mb-2">
+            <span className="text-[11px] font-medium text-slate-700">
+              Upload Car Image (thumbnail)
+            </span>
           </div>
 
-          {/* Battery marker */}
-          <div>
-            <div className="flex items-center gap-1 mb-2">
-              <span className="text-[11px] font-medium text-slate-700">
-                Assign Battery Marker
-              </span>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              {markerFiles.map((file) => (
-                <div
-                  key={file.name}
-                  className="w-28 rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-[10px] flex flex-col gap-1"
-                >
-                  <span className="truncate">{file.name}</span>
+          <div className="flex flex-wrap gap-3 items-center">
+            {thumbnailFile ? (
+              <div className="w-56 rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-[10px]">
+                <div className="truncate">{thumbnailFile.name}</div>
+                <div className="text-[10px] text-slate-400">
+                  {(thumbnailFile.size / 1024).toFixed(1)} KB
                 </div>
-              ))}
+              </div>
+            ) : null}
 
-              <label className="w-12 h-12 flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white cursor-pointer text-xl text-slate-400">
-                +
-                <input
-                  type="file"
-                  className="hidden"
-                  onChange={handleMarkerUpload}
-                />
-              </label>
-            </div>
+            <label className="w-12 h-12 flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white cursor-pointer text-xl text-slate-400">
+              +
+              <input
+                type="file"
+                className="hidden"
+                accept=".png,.jpg,.jpeg,.webp"
+                onChange={(e) => setThumbnailFile(e.target.files?.[0] || null)}
+              />
+            </label>
+
+            {mode === "edit" && initialValues?.thumbnailUrl ? (
+              <span className="text-[11px] text-slate-500">
+                Existing thumbnail uploaded. Uploading again will replace it.
+              </span>
+            ) : null}
           </div>
         </div>
 
-        {/* Footer buttons */}
+        {/*  Diagram upload */}
+        <div>
+          <div className="flex items-center gap-1 mb-2">
+            <span className="text-[11px] font-medium text-slate-700">
+              Upload Diagram (battery location)
+            </span>
+            <span className="text-red-500 text-[11px]">*</span>
+          </div>
+
+          <div className="flex flex-wrap gap-3 items-center">
+            {diagramFile ? (
+              <div className="w-56 rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-[10px]">
+                <div className="truncate">{diagramFile.name}</div>
+                <div className="text-[10px] text-slate-400">
+                  {(diagramFile.size / 1024).toFixed(1)} KB
+                </div>
+              </div>
+            ) : null}
+
+            <label className="w-12 h-12 flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white cursor-pointer text-xl text-slate-400">
+              +
+              <input
+                type="file"
+                className="hidden"
+                accept=".png,.jpg,.jpeg,.svg,.webp"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setDiagramFile(file);
+                  if (file) {
+                    setErrors((prev) => ({ ...prev, diagram: "" }));
+                  }
+                }}
+              />
+            </label>
+
+            {mode === "edit" && initialValues?.diagramUrl ? (
+              <span className="text-[11px] text-slate-500">
+                Existing diagram uploaded. Uploading again will replace it.
+              </span>
+            ) : null}
+
+            {errors.diagram ? (
+              <span className="text-[11px] text-red-600">{errors.diagram}</span>
+            ) : null}
+          </div>
+        </div>
+
         <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-between">
-          <Button
-            type="button"
-            variant="secondary"
-            fullWidth
-            onClick={onClose}
-          >
+          <Button type="button" variant="secondary" fullWidth onClick={onClose}>
             {mode === "edit" ? "Close" : "Cancel"}
           </Button>
           <Button type="submit" fullWidth>

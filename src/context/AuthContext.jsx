@@ -1,63 +1,64 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+/* eslint-disable react-refresh/only-export-components */
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { onAuthStateChanged, getIdTokenResult } from "firebase/auth";
+import { auth } from "../lib/firebase";
+import { signInAdmin, logout as fbLogout } from "../api/auth/authHelper";
 
 const AuthContext = createContext(null);
-const STORAGE_KEY = "car-admin-auth";
 
 export const AuthProvider = ({ children }) => {
-  const [auth, setAuth] = useState(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) {
-        return { isAuthenticated: false, token: null, user: null };
-      }
-      const parsed = JSON.parse(raw);
-      if (parsed?.token) {
-        return {
-          isAuthenticated: true,
-          token: parsed.token,
-          user: parsed.user || null,
-        };
-      }
-      return { isAuthenticated: false, token: null, user: null };
-    } catch (err) {
-      console.error("Failed to read auth from storage", err);
-      return { isAuthenticated: false, token: null, user: null };
-    }
+  const [state, setState] = useState({
+    user: null,
+    token: null,
+    claims: null,
+    loading: true,
   });
 
-  const login = ({ token, user }) => {
-    const next = {
-      isAuthenticated: true,
-      token,
-      user: user || null,
-    };
-    setAuth(next);
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ token, user: user || null })
-    );
-  };
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setState({ user: null, token: null, claims: null, loading: false });
+        return;
+      }
 
-  const logout = () => {
-    setAuth({
-      isAuthenticated: false,
-      token: null,
-      user: null,
+      const token = await user.getIdToken();
+      const tokenResult = await getIdTokenResult(user);
+      setState({
+        user,
+        token,
+        claims: tokenResult?.claims || {},
+        loading: false,
+      });
     });
-    window.localStorage.removeItem(STORAGE_KEY);
-  };
 
-  return (
-    <AuthContext.Provider value={{ ...auth, login, logout }}>
-      {children}
-    </AuthContext.Provider>
-  );
+    return () => unsub();
+  }, []);
+
+  const value = useMemo(() => {
+    const isAuthenticated = !!state.user;
+    const isAdmin = !!state.claims?.admin;
+
+    return {
+      ...state,
+      isAuthenticated,
+      isAdmin,
+
+      // email/password login (admin only)
+      async login(email, password) {
+        return await signInAdmin(email, password);
+      },
+
+      async logout() {
+        await fbLogout();
+      },
+    };
+  }, [state]);
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
+  if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
   return ctx;
 };

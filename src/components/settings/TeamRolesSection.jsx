@@ -1,25 +1,36 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import TableToolbar from "../shared/TableToolbar";
 import DataTable from "../shared/DataTable";
 import Pagination from "../shared/Pagination";
 import StatusPill from "../shared/StatusPill";
-import IconButton from "../shared/IconButton";
 import Button from "../shared/Button";
-import { FiEdit2, FiTrash2, FiChevronDown } from "react-icons/fi";
+import IconButton from "../shared/IconButton";
+import PopoverMenuPortal from "../shared/PopoverMenuPortal";
+import { FiMoreVertical } from "react-icons/fi";
 
-const TeamRolesSection = ({ members, onAddUserClick, onDeactivateClick }) => {
+const TeamRolesSection = ({
+  members,
+  loading = false,
+  disabled = false,
+  onAddUserClick,
+  onDeactivateClick,
+  onActivateClick,
+  onEditClick,
+  onRemoveClick,
+}) => {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(8);
 
+  const [menuState, setMenuState] = useState({ uid: null, anchorEl: null, row: null });
+
+  const closeMenu = () => setMenuState({ uid: null, anchorEl: null, row: null });
+
   const filtered = useMemo(() => {
-    return members.filter((m) => {
-      const matchesSearch = `${m.name} ${m.email}`
-        .toLowerCase()
-        .includes(search.toLowerCase());
-      const matchesStatus =
-        statusFilter === "all" ? true : m.status === statusFilter;
+    return (members || []).filter((m) => {
+      const matchesSearch = `${m.name} ${m.email}`.toLowerCase().includes(search.toLowerCase());
+      const matchesStatus = statusFilter === "all" ? true : m.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
   }, [members, search, statusFilter]);
@@ -30,7 +41,6 @@ const TeamRolesSection = ({ members, onAddUserClick, onDeactivateClick }) => {
   const columns = [
     { key: "name", label: "Name" },
     { key: "email", label: "Email" },
-    { key: "role", label: "Role" },
     { key: "lastActive", label: "Last Active" },
     {
       key: "status",
@@ -38,12 +48,20 @@ const TeamRolesSection = ({ members, onAddUserClick, onDeactivateClick }) => {
       render: (row) => {
         const isActive = row.status === "active";
         return (
-          <button type="button" className="inline-flex items-center gap-1">
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              if (isActive) onDeactivateClick?.(row);
+              else onActivateClick?.(row);
+            }}
+            className="inline-flex items-center gap-1 disabled:opacity-60"
+            title={isActive ? "Click to suspend" : "Click to activate"}
+          >
             <StatusPill
               status={isActive ? "active" : "missing"}
               label={isActive ? "Active" : "Suspend"}
             />
-            <FiChevronDown className="text-[11px] text-slate-500" />
           </button>
         );
       },
@@ -52,16 +70,18 @@ const TeamRolesSection = ({ members, onAddUserClick, onDeactivateClick }) => {
       key: "actions",
       label: "Actions",
       render: (row) => (
-        <div className="flex items-center gap-1">
-          <IconButton size="sm">
-            <FiEdit2 className="text-[13px]" />
-          </IconButton>
+        <div className="relative">
           <IconButton
             size="sm"
-            variant="danger"
-            onClick={() => onDeactivateClick(row)}
+            onClick={(e) =>
+              setMenuState((prev) =>
+                prev.uid === row.uid
+                  ? { uid: null, anchorEl: null, row: null }
+                  : { uid: row.uid, anchorEl: e.currentTarget, row }
+              )
+            }
           >
-            <FiTrash2 className="text-[13px]" />
+            <FiMoreVertical className="text-[14px]" />
           </IconButton>
         </div>
       ),
@@ -83,6 +103,7 @@ const TeamRolesSection = ({ members, onAddUserClick, onDeactivateClick }) => {
                 setStatusFilter(e.target.value);
                 setPage(1);
               }}
+              disabled={disabled}
             >
               <option value="all">Status</option>
               <option value="active">Active</option>
@@ -91,14 +112,18 @@ const TeamRolesSection = ({ members, onAddUserClick, onDeactivateClick }) => {
           </div>
         }
         rightContent={
-          <Button size="sm" onClick={onAddUserClick}>
+          <Button size="sm" onClick={onAddUserClick} disabled={disabled}>
             Add User
           </Button>
         }
       />
 
       <div className="mt-1 overflow-x-auto">
-        <DataTable columns={columns} data={pageRows} />
+        {loading ? (
+          <div className="p-4 text-xs text-slate-500">Loading team members...</div>
+        ) : (
+          <DataTable columns={columns} data={pageRows} />
+        )}
       </div>
 
       <Pagination
@@ -111,6 +136,38 @@ const TeamRolesSection = ({ members, onAddUserClick, onDeactivateClick }) => {
           setPage(1);
         }}
       />
+
+      <PopoverMenuPortal
+        open={!!menuState.uid}
+        anchorEl={menuState.anchorEl}
+        onClose={closeMenu}
+        align="right"
+      >
+        <div className="w-40 rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden">
+          <button
+            type="button"
+            className="w-full px-3 py-2 text-left text-xs hover:bg-slate-50"
+            onClick={() => {
+              if (menuState.row) onEditClick?.(menuState.row);
+              closeMenu();
+            }}
+            disabled={disabled}
+          >
+            Edit User
+          </button>
+          <button
+            type="button"
+            className="w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-slate-50"
+            onClick={() => {
+              if (menuState.row) onRemoveClick?.(menuState.row);
+              closeMenu();
+            }}
+            disabled={disabled}
+          >
+            Remove User
+          </button>
+        </div>
+      </PopoverMenuPortal>
     </div>
   );
 };
