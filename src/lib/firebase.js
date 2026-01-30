@@ -14,6 +14,8 @@ const firebaseConfig = {
   //  required for storage in some setups (recommended)
   storageBucket:
     env.VITE_FIREBASE_STORAGE_BUCKET || env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId:
+    env.VITE_FIREBASE_MESSAGING_SENDER_ID || env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
 };
 
 const missingKeys = Object.entries({
@@ -21,6 +23,8 @@ const missingKeys = Object.entries({
   authDomain: firebaseConfig.authDomain,
   projectId: firebaseConfig.projectId,
   appId: firebaseConfig.appId,
+  storageBucket: firebaseConfig.storageBucket,
+  messagingSenderId: firebaseConfig.messagingSenderId,
 })
   .filter(([, v]) => !v)
   .map(([k]) => k);
@@ -37,9 +41,12 @@ if (import.meta.env.DEV) {
 }
 
 if (missingKeys.length) {
-  throw new Error(
-    `[firebase] Missing Firebase env vars: ${missingKeys.join(", ")}. Check .env.local and Vite prefixes (VITE_*).`
-  );
+  const hint =
+    "[firebase] Missing Firebase env vars: " +
+    missingKeys.join(", ") +
+    ". Set them as Vite env vars (VITE_*) in your hosting provider build environment or .env.production/.env.local before building.";
+  console.error(hint);
+  throw new Error(hint);
 }
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
