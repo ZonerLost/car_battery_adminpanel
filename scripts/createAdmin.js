@@ -9,8 +9,8 @@ import admin from "firebase-admin";
  * DEFAULT ADMIN (you asked to include email + password in script)
  * IMPORTANT: change these before running on any real project.
  */
-const DEFAULT_ADMIN_EMAIL = "rashidiyaoo7@gmail.com";
-const DEFAULT_ADMIN_PASSWORD = "rashidiya";
+const DEFAULT_ADMIN_EMAIL = "admin@gmail.com";
+const DEFAULT_ADMIN_PASSWORD = "Admin123!";
 
 function arg(name) {
   const idx = process.argv.indexOf(`--${name}`);
