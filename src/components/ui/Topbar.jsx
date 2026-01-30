@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { FiBell, FiMenu } from "react-icons/fi";
@@ -110,7 +111,7 @@ const Topbar = ({ onMenuClick }) => {
           </div>
 
           {/* Notification button + dropdown */}
-          <div ref={notifRef} className="relative">
+          {/* <div ref={notifRef} className="relative">
             <button
               onClick={() => setNotifOpen((s) => !s)}
               aria-expanded={notifOpen}
@@ -163,7 +164,7 @@ const Topbar = ({ onMenuClick }) => {
                 </ul>
               </div>
             )}
-          </div>
+          </div> */}
         </div>
       </div>
     </header>
