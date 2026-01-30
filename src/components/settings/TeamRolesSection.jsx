@@ -13,6 +13,9 @@ const TeamRolesSection = ({
   loading = false,
   disabled = false,
   onAddUserClick,
+  onBackfillRoles,
+  backfillLoading = false,
+  canBackfill = false,
   onDeactivateClick,
   onActivateClick,
   onEditClick,
@@ -26,6 +29,19 @@ const TeamRolesSection = ({
   const [menuState, setMenuState] = useState({ uid: null, anchorEl: null, row: null });
 
   const closeMenu = () => setMenuState({ uid: null, anchorEl: null, row: null });
+
+  const renderRoleBadge = (role) => {
+    const isAdmin = role === "admin";
+    const classes = isAdmin
+      ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+      : "bg-slate-50 text-slate-700 border-slate-200";
+
+    return (
+      <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${classes}`}>
+        {isAdmin ? "Admin" : "User"}
+      </span>
+    );
+  };
 
   const filtered = useMemo(() => {
     return (members || []).filter((m) => {
@@ -41,6 +57,11 @@ const TeamRolesSection = ({
   const columns = [
     { key: "name", label: "Name" },
     { key: "email", label: "Email" },
+    {
+      key: "role",
+      label: "Role",
+      render: (row) => renderRoleBadge(row.role || "user"),
+    },
     { key: "lastActive", label: "Last Active" },
     {
       key: "status",
@@ -112,9 +133,22 @@ const TeamRolesSection = ({
           </div>
         }
         rightContent={
-          <Button size="sm" onClick={onAddUserClick} disabled={disabled}>
-            Add User
-          </Button>
+          <div className="flex items-center gap-2">
+            {canBackfill ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={onBackfillRoles}
+                disabled={disabled || backfillLoading}
+              >
+                {backfillLoading ? "Backfilling..." : "Backfill Roles"}
+              </Button>
+            ) : null}
+
+            <Button size="sm" onClick={onAddUserClick} disabled={disabled}>
+              Add User
+            </Button>
+          </div>
         }
       />
 

@@ -5,8 +5,9 @@ import FormRow from "../shared/FormRow";
 import TextField from "../shared/TextField";
 import SelectField from "../shared/SelectField";
 import Button from "../shared/Button";
+import { DEFAULT_ROLE, ROLE_OPTIONS, sanitizeRole } from "../../types/user";
 
-const emptyForm = { name: "", email: "", status: "active" };
+const emptyForm = { name: "", email: "", status: "active", role: DEFAULT_ROLE };
 
 const isValidEmail = (value) => {
   const v = String(value || "").trim();
@@ -20,6 +21,7 @@ const AddRoleModal = ({
   mode = "create", // "create" | "edit"
   initialValues = null,
   loading = false,
+  canEditRole = true,
 }) => {
   const [values, setValues] = useState(emptyForm);
   const [error, setError] = useState("");
@@ -36,6 +38,7 @@ const AddRoleModal = ({
             name: initialValues.name || "",
             email: initialValues.email || "",
             status: initialValues.status || "active",
+            role: initialValues.role || DEFAULT_ROLE,
           }
         : emptyForm
     );
@@ -53,11 +56,20 @@ const AddRoleModal = ({
     const name = String(values.name || "").trim();
     const email = String(values.email || "").trim().toLowerCase();
     const status = values.status || "active";
+    const role = sanitizeRole(values.role || DEFAULT_ROLE);
 
     if (!name) return setError("Name is required.");
     if (!email || !isValidEmail(email)) return setError("Enter a valid email.");
 
-    const payload = { name, email, status };
+    const previousRole = sanitizeRole(initialValues?.role || DEFAULT_ROLE);
+    if (mode === "edit" && canEditRole && previousRole !== "admin" && role === "admin") {
+      const confirmed = window.confirm(
+        "Promote this user to admin? Admins get full access to the portal."
+      );
+      if (!confirmed) return;
+    }
+
+    const payload = { name, email, status, role: canEditRole ? role : previousRole };
     await onSubmit(payload);
   };
 
@@ -84,6 +96,17 @@ const AddRoleModal = ({
             placeholder="Enter email i.e. maherkashan7@gmail.com"
             type="email"
             disabled={loading}
+          />
+        </FormRow>
+
+        <FormRow className="md:grid-cols-1">
+          <SelectField
+            label="Role"
+            name="role"
+            value={values.role}
+            onChange={handleChange}
+            options={ROLE_OPTIONS}
+            disabled={loading || !canEditRole}
           />
         </FormRow>
 

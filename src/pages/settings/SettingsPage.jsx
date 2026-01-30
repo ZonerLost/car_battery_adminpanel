@@ -10,25 +10,31 @@ import AddRoleModal from "../../components/settings/AddRoleModal";
 import ChangePasswordModal from "../../components/settings/ChangePasswordModal";
 import ConfirmDialog from "../../components/shared/ConfirmDialog";
 
+import { useAuth } from "../../context/AuthContext";
+
 import {
   subscribeTeamMembers,
   createTeamMember,
   updateTeamMember,
   deleteTeamMember,
+  backfillMissingUserRoles,
 } from "../../api/settings/settingsHelper";
+import { DEFAULT_ROLE } from "../../types/user";
 
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
 function formatFirestoreTimestamp(ts) {
-  if (!ts) return "—";
+  if (!ts) return "-";
   // Firestore Timestamp has toDate()
   const date = typeof ts?.toDate === "function" ? ts.toDate() : new Date(ts);
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
 }
 
 const SettingsPage = () => {
+  const { isAdmin } = useAuth();
+
   const [membersRaw, setMembersRaw] = useState([]);
   const [membersLoading, setMembersLoading] = useState(true);
 
@@ -40,6 +46,7 @@ const SettingsPage = () => {
   const [userToEdit, setUserToEdit] = useState(null);
 
   const [savingUser, setSavingUser] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
 
   useEffect(() => {
     const unsub = subscribeTeamMembers(
@@ -60,10 +67,11 @@ const SettingsPage = () => {
     return membersRaw.map((u) => ({
       id: u.uid || u.id, // for table key
       uid: u.uid || u.id,
-      name: u.fullName || "—",
-      email: u.email || "—",
+      name: u.fullName || "-",
+      email: u.email || "-",
       lastActive: formatFirestoreTimestamp(u.createdAt), // you can later add lastActiveAt
       status: u.status || "active", // optional
+      role: u.role || DEFAULT_ROLE,
       _raw: u,
     }));
   }, [membersRaw]);
@@ -78,6 +86,7 @@ const SettingsPage = () => {
         fullName: values.name,
         email: values.email,
         status: values.status,
+        role: values.role || DEFAULT_ROLE,
       });
       setIsAddUserOpen(false);
     } catch (e) {
@@ -96,6 +105,7 @@ const SettingsPage = () => {
         fullName: values.name,
         email: values.email,
         status: values.status,
+        role: values.role || userToEdit.role || DEFAULT_ROLE,
       });
       setUserToEdit(null);
     } catch (e) {
@@ -146,6 +156,25 @@ const SettingsPage = () => {
     }
   };
 
+  const handleBackfillRoles = async () => {
+    setBackfilling(true);
+    try {
+      const updatedCount = await backfillMissingUserRoles();
+      if (updatedCount > 0 && import.meta.env.DEV) {
+        console.log(`[backfill] added role=user to ${updatedCount} user(s)`);
+      }
+      if (updatedCount > 0) {
+        window.alert(`Backfilled role=user for ${updatedCount} user(s).`);
+      } else {
+        window.alert("All users already have a role field.");
+      }
+    } catch (e) {
+      console.error("Role backfill failed", e);
+    } finally {
+      setBackfilling(false);
+    }
+  };
+
   return (
     <>
       <PageContainer>
@@ -173,7 +202,10 @@ const SettingsPage = () => {
               onActivateClick={handleActivate}
               onEditClick={(user) => setUserToEdit(user)}
               onRemoveClick={(user) => setUserToRemove(user)}
-              disabled={savingUser}
+              disabled={savingUser || backfilling}
+              canBackfill={isAdmin}
+              onBackfillRoles={isAdmin ? handleBackfillRoles : undefined}
+              backfillLoading={backfilling}
             />
           </SectionCard>
         </div>
@@ -184,6 +216,7 @@ const SettingsPage = () => {
         isOpen={isAddUserOpen}
         mode="create"
         loading={savingUser}
+        canEditRole={isAdmin}
         onClose={() => setIsAddUserOpen(false)}
         onSubmit={handleAddUserSubmit}
       />
@@ -199,9 +232,11 @@ const SettingsPage = () => {
               name: userToEdit.name || "",
               email: userToEdit.email || "",
               status: userToEdit.status || "active",
+              role: userToEdit.role || DEFAULT_ROLE,
             }
             : null
         }
+        canEditRole={isAdmin}
         onClose={() => setUserToEdit(null)}
         onSubmit={handleEditUserSubmit}
       />
@@ -250,3 +285,7 @@ const SettingsPage = () => {
 };
 
 export default SettingsPage;
+
+
+
+

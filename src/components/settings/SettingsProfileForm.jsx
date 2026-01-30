@@ -9,6 +9,7 @@ import {
   upsertMyUserProfile,
 } from "../../api/settings/settingsHelper";
 import { auth } from "../../lib/firebase";
+import { DEFAULT_ROLE } from "../../types/user";
 
 const SettingsProfileForm = () => {
   const [platformValues, setPlatformValues] = useState({
@@ -41,6 +42,8 @@ const SettingsProfileForm = () => {
         fullName: fallbackName,
         email: user.email || "",
         uid: user.uid,
+        role: DEFAULT_ROLE,
+        status: "active",
       };
 
       await upsertMyUserProfile(doc);

@@ -11,6 +11,7 @@ import {
   onSnapshot,
   query,
   orderBy,
+  getDocs,
 } from "firebase/firestore";
 
 import {
@@ -18,6 +19,13 @@ import {
   reauthenticateWithCredential,
   updatePassword,
 } from "firebase/auth";
+
+import {
+  DEFAULT_ROLE,
+  normalizeUserDoc,
+  sanitizeRole,
+  sanitizeStatus,
+} from "../../types/user";
 
 /* -------------------------------------------------------------------------- */
 /*  Collections / Docs                                                        */
@@ -35,7 +43,7 @@ export async function getMyUserProfile() {
 
   const ref = doc(db, USERS_COL, user.uid);
   const snap = await getDoc(ref);
-  return snap.exists() ? snap.data() : null;
+  return snap.exists() ? normalizeUserDoc(snap) : null;
 }
 
 export async function upsertMyUserProfile(payload) {
@@ -44,21 +52,23 @@ export async function upsertMyUserProfile(payload) {
 
   const ref = doc(db, USERS_COL, user.uid);
 
-  // ✅ Keep required shape (createdAt/email/fullName/uid)
+  const base = {
+    uid: user.uid,
+    fullName: payload?.fullName ?? "",
+    email: payload?.email ?? user.email ?? "",
+    createdAt: payload?.createdAt || serverTimestamp(),
+    status: sanitizeStatus(payload?.status || "active"),
+    updatedAt: serverTimestamp(),
+  };
+
+  // Only set role when explicitly provided so users cannot self-promote.
+  if (payload?.role != null) {
+    base.role = sanitizeRole(payload.role);
+  }
+
+  //  Keep required shape (createdAt/email/fullName/uid)
   // Note: we use setDoc merge so if doc doesn't exist, it is created.
-  await setDoc(
-    ref,
-    {
-      uid: user.uid,
-      fullName: payload?.fullName ?? "",
-      email: payload?.email ?? user.email ?? "",
-      createdAt: payload?.createdAt || serverTimestamp(),
-      // optional UI field (remove if you want strictly ONLY 4 fields)
-      status: payload?.status || "active",
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+  await setDoc(ref, base, { merge: true });
 }
 
 /**
@@ -97,27 +107,38 @@ export function subscribeTeamMembers(onData, onError) {
   return onSnapshot(
     q,
     (snap) => {
-      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const rows = snap.docs.map((d) => normalizeUserDoc(d));
       onData(rows);
     },
     (err) => onError?.(err)
   );
 }
 
-// ✅ Create member doc with uid = docId and save required fields
-export async function createTeamMember({ fullName, email, status = "active" }) {
+//  Create member doc with uid = docId and save required fields
+export async function createTeamMember({
+  fullName,
+  email,
+  status = "active",
+  role = DEFAULT_ROLE,
+}) {
   const usersRef = collection(db, USERS_COL);
   const newRef = doc(usersRef); // auto-id
   const uid = newRef.id;
 
-  await setDoc(newRef, {
-    uid,
-    fullName: String(fullName || "").trim(),
-    email: String(email || "").trim().toLowerCase(),
-    status: status || "active",
-    createdAt: serverTimestamp(),
-    // optional UI field (remove if you want strictly ONLY 4 fields)
-  });
+  await setDoc(
+    newRef,
+    {
+      uid,
+      fullName: String(fullName || "").trim(),
+      email: String(email || "").trim().toLowerCase(),
+      status: sanitizeStatus(status || "active"),
+      role: sanitizeRole(role),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      // optional UI field (remove if you want strictly ONLY 4 fields)
+    },
+    { merge: true }
+  );
 
   return uid;
 }
@@ -130,7 +151,8 @@ export async function updateTeamMember(uid, payload) {
   const next = {};
   if (payload.fullName != null) next.fullName = String(payload.fullName).trim();
   if (payload.email != null) next.email = String(payload.email).trim().toLowerCase();
-  if (payload.status != null) next.status = payload.status;
+  if (payload.status != null) next.status = sanitizeStatus(payload.status);
+  if (payload.role != null) next.role = sanitizeRole(payload.role);
 
   await updateDoc(ref, {
     ...next,
@@ -141,6 +163,30 @@ export async function updateTeamMember(uid, payload) {
 export async function deleteTeamMember(uid) {
   if (!uid) throw new Error("Missing uid");
   await deleteDoc(doc(db, USERS_COL, uid));
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Utilities                                                                 */
+/* -------------------------------------------------------------------------- */
+export async function backfillMissingUserRoles() {
+  const snap = await getDocs(collection(db, USERS_COL));
+  const updates = [];
+
+  snap.forEach((docSnap) => {
+    const data = docSnap.data() || {};
+    if (!data.role) {
+      updates.push(
+        setDoc(
+          doc(db, USERS_COL, docSnap.id),
+          { role: DEFAULT_ROLE, updatedAt: serverTimestamp() },
+          { merge: true }
+        )
+      );
+    }
+  });
+
+  await Promise.all(updates);
+  return updates.length;
 }
 
 /* -------------------------------------------------------------------------- */
