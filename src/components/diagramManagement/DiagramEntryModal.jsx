@@ -5,6 +5,7 @@ import TextField from "../shared/TextField";
 import TextAreaField from "../shared/TextAreaField";
 import SelectField from "../shared/SelectField";
 import Button from "../shared/Button";
+import toast from "react-hot-toast";
 
 const EMPTY_VALUES = {
   make: "",
@@ -44,6 +45,8 @@ const DiagramEntryModal = ({
   const [diagramFile, setDiagramFile] = useState(null);
   const [thumbnailFile, setThumbnailFile] = useState(null);
   const [errors, setErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   useEffect(() => {
     if (!isOpen) return;
@@ -51,6 +54,8 @@ const DiagramEntryModal = ({
     setDiagramFile(null);
     setThumbnailFile(null);
     setErrors({});
+    setIsSubmitting(false);
+    setSubmitError("");
   }, [isOpen, mode, initialValues]);
 
   const handleChange = (e) => {
@@ -58,29 +63,52 @@ const DiagramEntryModal = ({
     setValues((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (isSubmitting) return;
 
     if (!diagramFile && !initialValues?.diagramUrl) {
       setErrors((prev) => ({ ...prev, diagram: "Battery diagram is required." }));
       return;
     }
 
-    const payload = {
-      ...(initialValues || {}),
-      ...values,
-      yearFrom: values.yearFrom ? Number(values.yearFrom) : undefined,
-      yearTo: values.yearTo ? Number(values.yearTo) : undefined,
-    };
+    setSubmitError("");
+    setIsSubmitting(true);
 
-    onSubmit(payload, { diagramFile, thumbnailFile });
+    const toastId = `diagram-${mode}`;
+
+    try {
+      const payload = {
+        ...(initialValues || {}),
+        ...values,
+        yearFrom: values.yearFrom ? Number(values.yearFrom) : undefined,
+        yearTo: values.yearTo ? Number(values.yearTo) : undefined,
+      };
+
+      await onSubmit?.(payload, { diagramFile, thumbnailFile });
+      toast.success(mode === "edit" ? "Changes saved successfully" : "Diagram added successfully", { id: toastId });
+      onClose?.();
+    } catch (err) {
+      console.error(err);
+      const apiMessage =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        (Array.isArray(err?.response?.data?.errors) ? err.response.data.errors[0] : null) ||
+        err?.message ||
+        "Failed to save diagram. Please try again.";
+      setSubmitError(apiMessage);
+      toast.error(apiMessage, { id: toastId });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const title = mode === "edit" ? "Edit Diagram" : "Add New Diagram";
   const primaryLabel = mode === "edit" ? "Save Changes" : "Add Diagram";
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={title} size="lg">
+    <Modal isOpen={isOpen} onClose={onClose} title={title} size="lg" closeDisabled={isSubmitting}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <FormRow className="md:grid-cols-2 gap-4">
           <TextField
@@ -256,13 +284,15 @@ const DiagramEntryModal = ({
         </div>
 
         <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-between">
-          <Button type="button" variant="secondary" fullWidth onClick={onClose}>
+          <Button type="button" variant="secondary" fullWidth onClick={onClose} disabled={isSubmitting}>
             {mode === "edit" ? "Close" : "Cancel"}
           </Button>
-          <Button type="submit" fullWidth>
-            {primaryLabel}
+          <Button type="submit" fullWidth isLoading={isSubmitting} disabled={isSubmitting}>
+            {isSubmitting ? (mode === "edit" ? "Saving..." : "Adding...") : primaryLabel}
           </Button>
         </div>
+
+        {submitError ? <div className="text-xs text-red-600">{submitError}</div> : null}
       </form>
     </Modal>
   );

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { listCarEntries } from "../api/shared/carEntries.helper";
 import { listReports } from "../api/FeedbackReports/FeedbackReports.helper";
+import { fetchDashboardCounts } from "../api/stats/overviewStats.helper";
 
 /**
  * Fetches dashboard-facing data sets from Firestore.
@@ -13,13 +14,18 @@ export default function useDashboardData() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [counts, setCounts] = useState(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const [carRows, reportResult] = await Promise.all([listCarEntries(), listReports()]);
+      const [carRows, reportResult, dashboardCounts] = await Promise.all([
+        listCarEntries(),
+        listReports(),
+        fetchDashboardCounts(),
+      ]);
 
       const normalizedReports = Array.isArray(reportResult)
         ? reportResult
@@ -31,6 +37,7 @@ export default function useDashboardData() {
 
       setCars(carRows || []);
       setReports(normalizedReports);
+      setCounts(dashboardCounts || null);
     } catch (e) {
       console.error("[dashboard] load failed", e);
       setError(e);
@@ -43,5 +50,5 @@ export default function useDashboardData() {
     refresh();
   }, [refresh]);
 
-  return { cars, reports, loading, error, refresh };
+  return { cars, reports, counts, loading, error, refresh };
 }

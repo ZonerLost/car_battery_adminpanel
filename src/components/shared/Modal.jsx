@@ -15,13 +15,17 @@ const Modal = ({
   footer,
   size = "md",
   className,
+  closeDisabled = false,
 }) => {
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-40 flex items-start md:items-center justify-center px-3 py-6 sm:px-4">
       {/* overlay */}
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div
+        className={`absolute inset-0 bg-black/40 ${closeDisabled ? "cursor-not-allowed" : ""}`}
+        onClick={closeDisabled ? undefined : onClose}
+      />
 
       {/* dialog */}
       <div
@@ -30,8 +34,12 @@ const Modal = ({
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
           <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
           <button
-            onClick={onClose}
-            className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-slate-100"
+            onClick={closeDisabled ? undefined : onClose}
+            className={`h-8 w-8 flex items-center justify-center rounded-full hover:bg-slate-100 ${
+              closeDisabled ? "opacity-50 cursor-not-allowed" : ""
+            }`}
+            disabled={closeDisabled}
+            aria-disabled={closeDisabled}
           >
             <FiX className="text-slate-600" />
           </button>

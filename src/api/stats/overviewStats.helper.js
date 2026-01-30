@@ -1,8 +1,9 @@
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, getCountFromServer, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { db } from "../../lib/firebase";
-import { listReports, normalizeReportRow } from "../FeedbackReports/FeedbackReports.helper";
+import { normalizeReportRow } from "../FeedbackReports/FeedbackReports.helper";
 
 const reportsCollection = () => collection(db, "modules", "feedbackReports", "reports");
+const carsCollection = () => collection(db, "modules", "carDatabase", "cars");
 
 const isProductionEnv = () => {
   if (typeof process !== "undefined" && process?.env?.NODE_ENV) {
@@ -22,13 +23,18 @@ const buildPendingCount = (reports = []) =>
     return statusNorm === "pending" ? sum + 1 : sum;
   }, 0);
 
-export async function getOverviewStats() {
-  const reportResult = await listReports();
-  const reports = Array.isArray(reportResult)
-    ? reportResult
-    : reportResult?.reports || reportResult?.data || [];
+const safeCount = async (q) => {
+  try {
+    const res = await getCountFromServer(q);
+    return res.data().count ?? 0;
+  } catch (e) {
+    console.error("[stats] count failed", e);
+    return 0;
+  }
+};
 
-  const pendingReports = buildPendingCount(reports);
+export async function getOverviewStats() {
+  const pendingReports = await safeCount(query(reportsCollection(), where("status", "==", "pending")));
 
   const stats = { pendingReports };
 
@@ -39,8 +45,27 @@ export async function getOverviewStats() {
   return stats;
 }
 
+export async function fetchDashboardCounts() {
+  const [totalCars, diagramsUploaded, pendingReports, markingMistakes] = await Promise.all([
+    safeCount(carsCollection()),
+    safeCount(query(carsCollection(), where("diagramStatus", "==", "uploaded"))),
+    safeCount(query(reportsCollection(), where("status", "==", "pending"))),
+    safeCount(
+      query(
+        reportsCollection(),
+        where("status", "==", "pending"),
+        where("type", "==", "Incorrect Location")
+      )
+    ),
+  ]);
+
+  const result = { totalCars, diagramsUploaded, pendingReports, markingMistakes };
+  if (!isProductionEnv()) console.log("[stats] dashboard counts", result);
+  return result;
+}
+
 export function subscribeOverviewStats(onData, onError) {
-  const q = query(reportsCollection(), orderBy("createdAt", "desc"));
+  const q = query(reportsCollection(), where("status", "==", "pending"), orderBy("createdAt", "desc"));
 
   const unsubscribe = onSnapshot(
     q,

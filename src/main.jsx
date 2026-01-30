@@ -2,6 +2,7 @@ import React, { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.jsx";
+import { Toaster } from "react-hot-toast";
 
 // Suppress noisy onboarding.js errors injected by external dev tooling/extensions
 if (import.meta.env.DEV && typeof window !== "undefined") {
@@ -30,5 +31,6 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <App />
+    <Toaster position="top-right" />
   </StrictMode>
 );

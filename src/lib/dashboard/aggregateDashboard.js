@@ -49,18 +49,25 @@ function isWithinRange(date, rangeKey, now = new Date()) {
 
 const pickUpdatedDate = (item) => toDateSafe(item?.updatedAt) || toDateSafe(item?.createdAt);
 
-export function buildDashboardMetrics(cars = [], reports = []) {
-  const totalCars = cars.length;
-  const diagramsUploaded = cars.filter((c) => !!c.diagramUrl).length;
+export function buildDashboardMetrics(cars = [], reports = [], counts = null) {
+  const totalCars = counts?.totalCars ?? cars.length;
+  const diagramsUploaded = counts?.diagramsUploaded ?? cars.filter((c) => !!c.diagramUrl).length;
   const reportRows = Array.isArray(reports) ? reports : [];
 
-  const pendingReports = reportRows.reduce((sum, r) => {
-    const statusNorm = String(r?.statusNorm ?? r?.status ?? "").trim().toLowerCase();
-    return statusNorm === "pending" ? sum + 1 : sum;
-  }, 0);
+  const pendingReports =
+    counts?.pendingReports ??
+    reportRows.reduce((sum, r) => {
+      const statusNorm = String(r?.statusNorm ?? r?.status ?? "").trim().toLowerCase();
+      return statusNorm === "pending" ? sum + 1 : sum;
+    }, 0);
 
   if (!isProductionEnv()) {
-    console.log("[dashboard] reports loaded:", reportRows.length, "pending:", pendingReports);
+    console.log("[dashboard] metrics counts", {
+      carsLen: cars.length,
+      reportsLen: reportRows.length,
+      counts,
+      pendingReports,
+    });
   }
 
   return [

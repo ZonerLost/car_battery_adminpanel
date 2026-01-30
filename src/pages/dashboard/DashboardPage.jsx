@@ -33,14 +33,14 @@ const RangeSelect = ({ value, onChange, options }) => (
 );
 
 const DashboardPage = () => {
-  const { cars, reports, loading, refresh } = useDashboardData();
+  const { cars, reports, counts, loading, refresh } = useDashboardData();
 
   const [coverageRange, setCoverageRange] = useState("thisMonth");
   const [reportsRange, setReportsRange] = useState("thisYear");
 
   const [confirmState, setConfirmState] = useState({ open: false, row: null });
 
-  const metrics = useMemo(() => buildDashboardMetrics(cars, reports), [cars, reports]);
+  const metrics = useMemo(() => buildDashboardMetrics(cars, reports, counts), [cars, reports, counts]);
   const coverageData = useMemo(() => buildCoverageByType(cars, coverageRange), [cars, coverageRange]);
   const reportsTrend = useMemo(() => buildMonthlyReportsTrend(reports, reportsRange), [reports, reportsRange]);
   const tableRows = useMemo(() => buildOverviewRows(cars), [cars]);

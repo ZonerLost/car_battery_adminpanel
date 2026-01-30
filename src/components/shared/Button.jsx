@@ -29,9 +29,13 @@ const Button = ({
   fullWidth = false,
   iconLeft,
   iconRight,
+  isLoading = false,
   className,
+  disabled,
   ...props
 }) => {
+  const effectiveDisabled = disabled || isLoading;
+
   return (
     <button
       className={classNames(
@@ -41,9 +45,18 @@ const Button = ({
         fullWidth && "w-full",
         className
       )}
+      disabled={effectiveDisabled}
+      aria-busy={isLoading}
+      aria-disabled={effectiveDisabled}
       {...props}
     >
       {iconLeft && <span className="shrink-0">{iconLeft}</span>}
+      {isLoading && (
+        <span
+          className="inline-block h-4 w-4 rounded-full border-2 border-current border-t-transparent opacity-70 animate-spin"
+          aria-hidden
+        />
+      )}
       <span>{children}</span>
       {iconRight && <span className="shrink-0">{iconRight}</span>}
     </button>

@@ -7,6 +7,7 @@ import DiagramMetrics from "../../components/diagramManagement/DiagramMetrics";
 import DiagramOverviewTable from "../../components/diagramManagement/DiagramOverviewTable";
 import DiagramEntryModal from "../../components/diagramManagement/DiagramEntryModal";
 import AssignBatteryMarkerModal from "../../components/diagramManagement/AssignBatteryMarkerModal";
+import toast from "react-hot-toast";
 
 import {
   listCarEntries,
@@ -35,6 +36,7 @@ const DiagramManagementPage = () => {
     open: false,
     diagram: null,
   });
+  const [deleteStatus, setDeleteStatus] = useState({ loading: false, error: "" });
 
   const load = async () => {
     setLoading(true);
@@ -59,8 +61,14 @@ const DiagramManagementPage = () => {
   const openMarkerModal = (diagram) => setMarkerModalState({ open: true, diagram });
   const closeMarkerModal = () => setMarkerModalState({ open: false, diagram: null });
 
-  const openDeleteConfirm = (diagram) => setConfirmState({ open: true, diagram });
-  const closeDeleteConfirm = () => setConfirmState({ open: false, diagram: null });
+  const openDeleteConfirm = (diagram) => {
+    setDeleteStatus({ loading: false, error: "" });
+    setConfirmState({ open: true, diagram });
+  };
+  const closeDeleteConfirm = () => {
+    setDeleteStatus({ loading: false, error: "" });
+    setConfirmState({ open: false, diagram: null });
+  };
 
   const handleSaveDiagram = async (values, files) => {
     try {
@@ -73,6 +81,7 @@ const DiagramManagementPage = () => {
       await load();
     } catch (e) {
       console.error(e);
+      throw e;
     }
   };
 
@@ -88,13 +97,27 @@ const DiagramManagementPage = () => {
 
   const handleDeleteDiagram = async () => {
     if (!confirmState.diagram?.id) return;
+    if (deleteStatus.loading) return;
+    setDeleteStatus({ loading: true, error: "" });
+    const toastId = "diagram-delete";
     try {
       await deleteCarEntry(confirmState.diagram.id);
       closeDeleteConfirm();
+      toast.success("Diagram deleted successfully", { id: toastId });
       await load();
     } catch (e) {
       console.error(e);
+      const msg =
+        e?.response?.data?.message ||
+        e?.response?.data?.error ||
+        (Array.isArray(e?.response?.data?.errors) ? e.response.data.errors[0] : null) ||
+        e?.message ||
+        "Failed to delete diagram. Please try again.";
+      setDeleteStatus({ loading: false, error: msg });
+      toast.error(msg, { id: toastId });
+      return;
     }
+    setDeleteStatus({ loading: false, error: "" });
   };
 
   const metrics = useMemo(() => {
@@ -150,6 +173,9 @@ const DiagramManagementPage = () => {
         confirmLabel="Delete Diagram"
         cancelLabel="Cancel"
         variant="danger"
+        loading={deleteStatus.loading}
+        loadingLabel="Deleting..."
+        errorText={deleteStatus.error}
       />
     </>
   );

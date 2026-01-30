@@ -12,11 +12,15 @@ const ConfirmDialog = ({
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   variant = "danger", // danger | primary
+  loading = false,
+  loadingLabel,
+  errorText = "",
 }) => {
   const isDanger = variant === "danger";
+  const confirmText = loading ? loadingLabel || confirmLabel : confirmLabel;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={title} size="sm">
+    <Modal isOpen={isOpen} onClose={onClose} title={title} size="sm" closeDisabled={loading}>
       <div className="space-y-3">
         {/* {isDanger && (
           <Alert type="danger" title="Warning">
@@ -24,18 +28,21 @@ const ConfirmDialog = ({
           </Alert>
         )} */}
         <p className="text-xs text-slate-600 leading-relaxed">{description}</p>
+        {errorText ? <p className="text-xs text-red-600">{errorText}</p> : null}
       </div>
 
       <div className="mt-4 flex flex-col sm:flex-row justify-end gap-2">
-        <Button variant="secondary" size="sm" onClick={onClose}>
+        <Button variant="secondary" size="sm" onClick={onClose} disabled={loading}>
           {cancelLabel}
         </Button>
         <Button
           variant={isDanger ? "danger" : "primary"}
           size="sm"
-          onClick={onConfirm}
+          onClick={loading ? undefined : onConfirm}
+          isLoading={loading}
+          disabled={loading}
         >
-          {confirmLabel}
+          {confirmText}
         </Button>
       </div>
     </Modal>
