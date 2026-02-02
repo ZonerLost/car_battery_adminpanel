@@ -15,7 +15,7 @@ const navItems = [
   { label: "Dashboard", icon: FiGrid, to: "/" },
   { label: "Car Database", icon: FiDatabase, to: "/car-database" },
   { label: "Feedback & Reports", icon: FiFileText, to: "/feedback-reports" },
-  { label: "Diagram Management", icon: FiBarChart2, to: "/diagram-management" },
+  // { label: "Diagram Management", icon: FiBarChart2, to: "/diagram-management" },
   { label: "Settings", icon: FiSettings, to: "/settings" },
 ];
 

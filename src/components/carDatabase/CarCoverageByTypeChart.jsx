@@ -3,10 +3,18 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from "recharts";
 const COLORS = ["#00c3ff", "#00d97e", "#ff9f1c", "#ff5a5f"];
 
 const CarCoverageByTypeChart = ({ data = [] }) => {
+  if (!data || data.length === 0) {
+    return (
+      <div className="h-[220px] w-full flex items-center justify-center text-xs text-slate-500">
+        No data for selected filters
+      </div>
+    );
+  }
+
   return (
-    <div className="w-full h-64 sm:h-56 flex items-center justify-center">
-      <div className="flex-1 h-full w-full">
-        <ResponsiveContainer width="100%" height="100%">
+    <div className="w-full min-w-0 flex items-center justify-center">
+      <div className="flex-1 w-full min-w-0">
+        <ResponsiveContainer width="100%" height={220} minWidth={0}>
           <PieChart>
             <Pie data={data} innerRadius={50} outerRadius={70} paddingAngle={4} dataKey="value">
               {data.map((entry, index) => (

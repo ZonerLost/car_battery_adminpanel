@@ -72,7 +72,7 @@ const Topbar = ({ onMenuClick }) => {
   };
 
   return (
-    <header className="sticky top-0 z-20 bg-white border-b border-slate-200">
+    <header className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-slate-200">
       <div className="px-3 sm:px-4 md:px-6 py-3 flex flex-wrap items-center gap-3">
         {/* Left: mobile menu + page title */}
         <div className="flex items-center gap-3 flex-1 min-w-[200px]">

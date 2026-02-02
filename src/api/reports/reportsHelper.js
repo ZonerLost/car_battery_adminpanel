@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import {
   collection,
   getDocs,
@@ -13,6 +14,11 @@ import { normalizeReportRow } from "../FeedbackReports/FeedbackReports.helper";
 const reportsCol = () => collection(db, "modules", "feedbackReports", "reports");
 const usersCol = () => collection(db, "users");
 
+const TYPE_GENERAL = "general feedback";
+
+const safeText = (v) => String(v ?? "").trim();
+const typeNorm = (t) => safeText(t).toLowerCase();
+
 const chunk = (arr, size = 10) =>
   arr.reduce((chunks, item, idx) => {
     if (idx % size === 0) chunks.push([]);
@@ -25,38 +31,58 @@ const fallbackNameFromEmail = (email) => {
   return email.split("@")[0] || "";
 };
 
+const pickSubmitterDisplay = (r) =>
+  safeText(
+    r.submittedByDisplay ||
+      r.submittedByName ||
+      r.submittedByEmail ||
+      r.submittedBy ||
+      r.email ||
+      r.submittedEmail
+  ) || "â€”";
+
+const computeCarKey = (r) => {
+  // Used as fallback for "Car ID" when Firestore carId is missing
+  const make = safeText(r.make);
+  const model = safeText(r.model);
+  const year = Number(r.year ?? r.yearFrom ?? r.yearTo);
+
+  const carStr = safeText(r.car); // sometimes mobile sends combined string
+  if (!make && !model && carStr) return carStr;
+
+  const parts = [make, model, Number.isFinite(year) ? String(year) : ""].filter(Boolean);
+  if (!parts.length) return null;
+
+  return parts.join("-").replace(/\s+/g, "-").toLowerCase();
+};
+
 const buildReportQuery = (filters = {}) => {
+  // Keep query simple (avoids composite index issues)
   const constraints = [orderBy("createdAt", "desc")];
-
-  if (filters.status && filters.status !== "all") constraints.push(where("status", "==", filters.status));
-  if (filters.type && filters.type !== "all") constraints.push(where("type", "==", filters.type));
-  if (filters.dateRange?.start) constraints.push(where("createdAt", ">=", filters.dateRange.start));
   if (filters.limit) constraints.push(limitDocs(filters.limit));
-
   return query(reportsCol(), ...constraints);
 };
 
 export const attachSubmitterDisplay = async (reports = []) => {
   if (!Array.isArray(reports) || !reports.length) return [];
 
-  const withDisplay = reports.map((r) => {
-    const submittedByDisplay =
-      r.submittedBy ||
-      r.submittedByName ||
-      r.submittedByEmail ||
-      r.submittedEmail ||
-      (r.createdByUid ? null : "—");
-    return { ...r, submittedByDisplay };
-  });
+  const withDisplay = reports.map((r) => ({
+    ...r,
+    submittedByDisplay: pickSubmitterDisplay(r),
+  }));
 
   const missing = withDisplay.filter(
-    (r) => (!r.submittedByDisplay || r.submittedByDisplay === "—") && r.createdByUid
+    (r) => (r.submittedByDisplay === "â€”" || !r.submittedByDisplay) && (r.createdByUid || r.submittedByUid)
   );
 
-  const uniqueUids = Array.from(new Set(missing.map((r) => r.createdByUid))).filter(Boolean);
+  const uniqueUids = Array.from(
+    new Set(missing.map((r) => r.createdByUid || r.submittedByUid).filter(Boolean))
+  );
+
   if (!uniqueUids.length) return withDisplay;
 
   const userMap = new Map();
+
   for (const c of chunk(uniqueUids, 10)) {
     const snap = await getDocs(query(usersCol(), where("uid", "in", c)));
     snap.docs.forEach((d) => {
@@ -68,9 +94,18 @@ export const attachSubmitterDisplay = async (reports = []) => {
   }
 
   return withDisplay.map((r) => {
-    if (r.submittedByDisplay && r.submittedByDisplay !== "—") return r;
-    const user = userMap.get(r.createdByUid);
-    const display = user?.fullName || user?.email || fallbackNameFromEmail(user?.email) || "—";
+    if (r.submittedByDisplay && r.submittedByDisplay !== "â€”") return r;
+
+    const uid = r.createdByUid || r.submittedByUid;
+    const user = userMap.get(uid);
+
+    const display =
+      user?.fullName ||
+      user?.email ||
+      fallbackNameFromEmail(user?.email) ||
+      pickSubmitterDisplay(r) ||
+      "â€”";
+
     return { ...r, submittedByDisplay: display };
   });
 };
@@ -82,11 +117,25 @@ export const subscribeFeedbackReports = (filters = {}, onData, onError) => {
     q,
     async (snap) => {
       try {
-        const reports = snap.docs.map((d) => ({
-          ...normalizeReportRow(d),
-          docId: d.id,
-          submittedByDisplay: d.data()?.submittedBy || "—",
-        }));
+        const reports = snap.docs.map((d) => {
+          const row = normalizeReportRow(d);
+          const raw = d.data() || {};
+
+          const attachmentUrl = row.attachmentUrl || raw.attachmentUrl || null;
+          const attachmentName = row.attachmentName || raw.attachmentName || null;
+
+          const carKey = computeCarKey(row);
+
+          return {
+            ...row,
+            docId: d.id,
+            attachmentUrl,
+            attachmentName,
+            submittedByDisplay: pickSubmitterDisplay(row),
+            carKey, // âœ… fallback for Car ID display
+          };
+        });
+
         const resolved = await attachSubmitterDisplay(reports);
         onData?.(resolved);
       } catch (e) {

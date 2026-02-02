@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import PageContainer from "../../components/shared/PageContainer";
 import SectionCard from "../../components/shared/SectionCard";
 import ChartCard from "../../components/shared/ChartCard";
@@ -9,102 +10,176 @@ import CarCoverageByTypeChart from "../../components/carDatabase/CarCoverageByTy
 import CarCoverageByMakeChart from "../../components/carDatabase/CarCoverageByMakeChart";
 import CarOverviewTable from "../../components/carDatabase/CarOverviewTable";
 import CarEntryModal from "../../components/carDatabase/CarEntryModal";
+import AssignBatteryMarkerModal from "../../components/diagramManagement/AssignBatteryMarkerModal";
 
 import {
-  listCarEntries,
+  fetchCarsPage,
+  getCarEntry,
   createCarEntry,
   updateCarEntry,
   deleteCarEntry,
   setCarActive,
+  saveMarker,
 } from "../../api/CarDatabase/CarDatabase.helper";
 import { getOverviewStats, subscribeOverviewStats } from "../../api/stats/overviewStats.helper";
+import { getCarDatabaseCounts } from "../../api/stats/carDatabaseCounts.helper";
 
 const RANGE_ORDER = ["thisMonth", "last90", "all"];
-const RANGE_LABELS = {
-  thisMonth: "This Month",
-  last90: "Last 90 Days",
-  all: "All Time",
-};
+const RANGE_LABELS = { thisMonth: "This Month", last90: "Last 90 Days", all: "All Time" };
 
-const toDate = (value) => {
-  if (value?.toDate?.()) return value.toDate();
-  if (value) {
-    const d = new Date(value);
-    if (!Number.isNaN(d.getTime())) return d;
-  }
-  return null;
-};
-
-const createdAtInRange = (entry, range) => {
-  const created = toDate(entry?.createdAt);
-  if (!created) return true; // include unknown timestamps
-
-  const now = new Date();
-  if (range === "thisMonth") {
-    return created.getFullYear() === now.getFullYear() && created.getMonth() === now.getMonth();
-  }
-  if (range === "last90") {
-    const cutoff = new Date(now);
-    cutoff.setDate(cutoff.getDate() - 90);
-    return created >= cutoff;
-  }
-  return true; // all time
+const normalizeYearInput = (value) => {
+  if (value === null || value === undefined) return null;
+  const trimmed = typeof value === "string" ? value.trim() : value;
+  if (trimmed === "") return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) ? n : null;
 };
 
 const CarDatabasePage = () => {
-  const [cars, setCars] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const cursorStackRef = useRef([]); // index = page-1 stores lastDoc of that page
+
+  const [filters, setFilters] = useState({
+    pageSize: 25,
+    status: "all",
+    make: "",
+    yearFrom: "",
+    yearTo: "",
+    search: "",
+  });
+
+  // ---------- Dashboard stats ----------
   const [rangeIndex, setRangeIndex] = useState(0);
-  const [overviewStats, setOverviewStats] = useState({ pendingReports: 0 });
-
-  const [entryModalState, setEntryModalState] = useState({
-    open: false,
-    mode: "add",
-    car: null,
-  });
-
-  const [confirmState, setConfirmState] = useState({
-    open: false,
-    type: null, // activate | deactivate | delete
-    car: null,
-  });
-
   const timeRange = RANGE_ORDER[rangeIndex];
   const rangeLabel = RANGE_LABELS[timeRange];
   const cycleRange = () => setRangeIndex((i) => (i + 1) % RANGE_ORDER.length);
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const rows = await listCarEntries();
-      setCars(rows);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [counts, setCounts] = useState({ totalCars: 0, newCars: 0, diagramsUploaded: 0 });
+  const [coverageByTypeData, setCoverageByTypeData] = useState([]);
+  const [coverageByMakeData, setCoverageByMakeData] = useState([]);
+  const [overviewStats, setOverviewStats] = useState({ pendingReports: 0 });
 
-  useEffect(() => {
-    load();
+  // ---------- Modals ----------
+  const [entryModalState, setEntryModalState] = useState({ open: false, mode: "add", car: null });
+  const [markerModalState, setMarkerModalState] = useState({ open: false, car: null });
+  const [confirmState, setConfirmState] = useState({ open: false, type: null, car: null });
+
+  const openAddModal = () => setEntryModalState({ open: true, mode: "add", car: null });
+  const openEditModal = (car) => setEntryModalState({ open: true, mode: "edit", car });
+  const closeEntryModal = () => setEntryModalState({ open: false, mode: "add", car: null });
+
+  const openMarkerModal = (car) => setMarkerModalState({ open: true, car });
+  const closeMarkerModal = () => setMarkerModalState({ open: false, car: null });
+
+  const openConfirm = (type, car) => setConfirmState({ open: true, type, car });
+  const closeConfirm = () => setConfirmState({ open: false, type: null, car: null });
+
+  const handleFilterChange = useCallback((patch) => {
+    setFilters((prev) => ({ ...prev, ...patch }));
+    cursorStackRef.current = [];
+    setPage(1);
   }, []);
 
-  useEffect(() => {
-    let unsubscribeReports;
+  const loadPage = useCallback(
+    async (targetPage) => {
+      if (targetPage < 1) return;
+      const startCursor = targetPage === 1 ? null : cursorStackRef.current[targetPage - 2] || null;
+      const isInitial = targetPage === 1;
 
-    const fetchStats = async () => {
+      if (isInitial) setLoading(true);
+      else setLoadingMore(true);
+
+      try {
+        const res = await fetchCarsPage({
+          pageSize: filters.pageSize,
+          cursor: startCursor,
+          filters: {
+            status: filters.status,
+            make: filters.make,
+            yearFrom: normalizeYearInput(filters.yearFrom),
+            yearTo: normalizeYearInput(filters.yearTo),
+            search: filters.search,
+          },
+        });
+
+        setRows(res.rows || []);
+        setHasMore(res.hasMore);
+        cursorStackRef.current[targetPage - 1] = res.nextCursor || null;
+        setPage(targetPage);
+      } catch (e) {
+        const msg =
+          e?.code === "failed-precondition"
+            ? "Firestore index required. Please create the suggested index from the console link."
+            : "Failed to load cars.";
+        toast.error(msg);
+        console.error("[car-db] load page failed", e);
+        if (isInitial) {
+          setRows([]);
+          setHasMore(false);
+        }
+      } finally {
+        if (isInitial) setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    [filters]
+  );
+
+  useEffect(() => {
+    loadPage(1);
+  }, [loadPage]);
+
+  const handleNextPage = useCallback(() => {
+    if (!hasMore || loading || loadingMore) return;
+    loadPage(page + 1);
+  }, [hasMore, loadPage, loading, loadingMore, page]);
+
+  const handlePrevPage = useCallback(() => {
+    if (page <= 1 || loading) return;
+    loadPage(page - 1);
+  }, [loadPage, loading, page]);
+
+  // Dashboard: counts (scalable)
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await getCarDatabaseCounts(timeRange);
+        if (!alive) return;
+        setCounts(res.counts);
+        setCoverageByTypeData(res.byTypeData || []);
+        setCoverageByMakeData(res.byMakeData || []);
+      } catch (e) {
+        console.error("[car-db] counts failed", e);
+        if (!alive) return;
+        setCounts({ totalCars: 0, newCars: 0, diagramsUploaded: 0 });
+        setCoverageByTypeData([]);
+        setCoverageByMakeData([]);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [timeRange]);
+
+  // Pending reports stats (existing helper)
+  useEffect(() => {
+    let unsubscribe;
+    (async () => {
       try {
         const stats = await getOverviewStats();
         setOverviewStats((prev) => ({ ...prev, ...stats }));
       } catch (e) {
         console.error("[car-db] overview stats load failed", e);
       }
-    };
-
-    fetchStats();
+    })();
 
     try {
-      unsubscribeReports = subscribeOverviewStats(
+      unsubscribe = subscribeOverviewStats(
         (stats) => setOverviewStats((prev) => ({ ...prev, ...stats })),
         (err) => console.error("[car-db] overview stats subscription failed", err)
       );
@@ -113,26 +188,46 @@ const CarDatabasePage = () => {
     }
 
     return () => {
-      if (typeof unsubscribeReports === "function") unsubscribeReports();
+      if (typeof unsubscribe === "function") unsubscribe();
     };
   }, []);
 
-  const openAddModal = () => setEntryModalState({ open: true, mode: "add", car: null });
-  const openEditModal = (car) => setEntryModalState({ open: true, mode: "edit", car });
-  const closeEntryModal = () => setEntryModalState({ open: false, mode: "add", car: null });
-
-  const openConfirm = (type, car) => setConfirmState({ open: true, type, car });
-  const closeConfirm = () => setConfirmState({ open: false, type: null, car: null });
+  const metrics = useMemo(() => {
+    const pendingReports = Number(overviewStats?.pendingReports ?? 0);
+    return [
+      { id: "totalCars", title: "Cars in Database", value: String(counts.totalCars), deltaLabel: rangeLabel, deltaType: "neutral" },
+      { id: "newCars", title: "New Cars Added", value: String(counts.newCars), deltaLabel: rangeLabel, deltaType: "neutral" },
+      { id: "diagrams", title: "Diagrams Uploaded", value: String(counts.diagramsUploaded), deltaLabel: rangeLabel, deltaType: "neutral" },
+      { id: "pendingReports", title: "Pending Reports", value: String(pendingReports), deltaLabel: rangeLabel, deltaType: "neutral" },
+    ];
+  }, [counts, overviewStats?.pendingReports, rangeLabel]);
 
   const handleSaveCar = async (values, files) => {
     try {
       if (entryModalState.mode === "add") {
-        await createCarEntry(values, files);
+        const carId = await createCarEntry(values, files);
+        closeEntryModal();
+
+        // after creating, open marker modal to set location
+        const created = await getCarEntry(carId);
+        if (created) openMarkerModal(created);
+
+        await loadPage(1);
       } else if (entryModalState.mode === "edit" && entryModalState.car?.id) {
         await updateCarEntry(entryModalState.car.id, values, files);
+        closeEntryModal();
+        await loadPage(1);
       }
-      closeEntryModal();
-      await load();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSaveMarker = async (carId, markerPosition) => {
+    try {
+      await saveMarker(carId, markerPosition);
+      closeMarkerModal();
+      await loadPage(1);
     } catch (e) {
       console.error(e);
     }
@@ -152,52 +247,11 @@ const CarDatabasePage = () => {
       }
 
       closeConfirm();
-      await load();
+      await loadPage(1);
     } catch (e) {
       console.error(e);
     }
   };
-
-  const scopedCars = useMemo(
-    () => cars.filter((c) => createdAtInRange(c, timeRange)),
-    [cars, timeRange]
-  );
-
-  const metrics = useMemo(() => {
-    const totalCars = scopedCars.length;
-    const newCarsInRange = scopedCars.length;
-    const diagramsUploaded = scopedCars.filter((c) => !!c.diagramUrl).length;
-    const pendingReports = Number(overviewStats?.pendingReports ?? 0);
-
-    return [
-      { id: "totalCars", title: "Cars in Database", value: String(totalCars), deltaLabel: rangeLabel, deltaType: "neutral" },
-      { id: "newCars", title: "New Cars Added", value: String(newCarsInRange), deltaLabel: rangeLabel, deltaType: "neutral" },
-      { id: "diagrams", title: "Diagrams Uploaded", value: String(diagramsUploaded), deltaLabel: rangeLabel, deltaType: "neutral" },
-      { id: "pendingReports", title: "Pending Reports", value: String(pendingReports), deltaLabel: rangeLabel, deltaType: "neutral" },
-    ];
-  }, [scopedCars, rangeLabel, overviewStats?.pendingReports]);
-
-  const byTypeData = useMemo(() => {
-    const map = new Map();
-    scopedCars.forEach((c) => {
-      const k = c.bodyType || "Other";
-      map.set(k, (map.get(k) || 0) + 1);
-    });
-    return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
-  }, [scopedCars]);
-
-  const byMakeData = useMemo(() => {
-    const map = new Map();
-    scopedCars.forEach((c) => {
-      const k = c.make || "Unknown";
-      map.set(k, (map.get(k) || 0) + 1);
-    });
-
-    return Array.from(map.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
-      .map(([make, total]) => ({ make, total }));
-  }, [scopedCars]);
 
   const confirmConfig = (() => {
     const { type, car } = confirmState;
@@ -206,8 +260,7 @@ const CarDatabasePage = () => {
     if (type === "activate") {
       return {
         title: "Activate Car Entry",
-        description:
-          "This car entry will become visible in search results and accessible to users once activated. Make sure its diagram and marker are verified.",
+        description: "This car entry will become visible in search results. Make sure its marker is verified.",
         confirmLabel: "Activate",
         cancelLabel: "Cancel",
         variant: "primary",
@@ -217,7 +270,7 @@ const CarDatabasePage = () => {
       return {
         title: "Deactivate Car Entry",
         description:
-          "Are you sure you want to deactivate this car entry? It will no longer appear in search results in the mobile app.",
+          "Are you sure you want to deactivate this car entry? It will no longer appear in search results.",
         confirmLabel: "Deactivate",
         cancelLabel: "Cancel",
         variant: "danger",
@@ -225,8 +278,7 @@ const CarDatabasePage = () => {
     }
     return {
       title: "Delete Car Entry",
-      description:
-        "Are you sure you want to permanently delete this car entry? This action cannot be undone.",
+      description: "Are you sure you want to permanently delete this car entry? This action cannot be undone.",
       confirmLabel: "Delete Car",
       cancelLabel: "Cancel",
       variant: "danger",
@@ -251,7 +303,7 @@ const CarDatabasePage = () => {
               </button>
             }
           >
-            <CarCoverageByTypeChart data={byTypeData} />
+            <CarCoverageByTypeChart data={coverageByTypeData} />
           </ChartCard>
 
           <ChartCard
@@ -266,16 +318,24 @@ const CarDatabasePage = () => {
               </button>
             }
           >
-            <CarCoverageByMakeChart data={byMakeData} />
+            <CarCoverageByMakeChart data={coverageByMakeData} />
           </ChartCard>
         </div>
 
         <SectionCard title="Overview" className="mt-5">
           <CarOverviewTable
-            cars={cars}
+            rows={rows}
             loading={loading}
+            loadingMore={loadingMore}
+            hasMore={hasMore}
+            page={page}
+            filters={filters}
+            onFilterChange={handleFilterChange}
+            onNextPage={handleNextPage}
+            onPrevPage={handlePrevPage}
             onAddCar={openAddModal}
             onEditCar={openEditModal}
+            onAssignMarker={openMarkerModal}
             onToggleStatus={(car) => openConfirm(car.status === "active" ? "deactivate" : "activate", car)}
             onDeleteCar={(car) => openConfirm("delete", car)}
           />
@@ -288,6 +348,13 @@ const CarDatabasePage = () => {
         initialValues={entryModalState.car}
         onClose={closeEntryModal}
         onSubmit={handleSaveCar}
+      />
+
+      <AssignBatteryMarkerModal
+        isOpen={markerModalState.open}
+        diagram={markerModalState.car}
+        onClose={closeMarkerModal}
+        onSave={handleSaveMarker}
       />
 
       {confirmConfig && (

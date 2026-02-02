@@ -23,12 +23,12 @@ const CarCoverageChart = ({ data = [], loading = false }) => {
   const hasData = displayData.length > 0 && total > 0;
 
   return (
-    <div className="w-full h-64 sm:h-56 flex flex-col sm:flex-row items-center gap-4">
-      <div className="flex-1 h-full w-full">
+    <div className="w-full h-full min-h-[220px] sm:min-h-[240px] min-w-0 flex flex-col sm:flex-row items-center gap-4">
+      <div className="flex-1 h-full w-full min-w-0">
         {loading ? (
           <div className="h-full flex items-center justify-center text-xs text-slate-500">Loading chart...</div>
         ) : hasData ? (
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <PieChart>
               <Pie data={displayData} innerRadius={50} outerRadius={70} paddingAngle={4} dataKey="value">
                 {displayData.map((_, index) => (

@@ -5,6 +5,12 @@
 }
 
 @layer base {
+  html,
+  body,
+  #root {
+    @apply h-full;
+  }
+
   body {
     @apply font-sans antialiased;
   }

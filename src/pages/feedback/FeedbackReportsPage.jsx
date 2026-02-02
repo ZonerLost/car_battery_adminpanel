@@ -1,4 +1,3 @@
-/* eslint-disable no-unused-vars */
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useMemo, useState } from "react";
 import PageContainer from "../../components/shared/PageContainer";
@@ -16,6 +15,10 @@ import { subscribeFeedbackReports } from "../../api/reports/reportsHelper";
 import { REPORT_RANGE_OPTIONS, buildMonthlyReportsTrend, toDateSafe } from "../../lib/dashboard/aggregateDashboard";
 
 const RANGE_OPTIONS = REPORT_RANGE_OPTIONS;
+
+const TYPE_GENERAL = "General Feedback";
+const TYPE_MISSING = "Missing Car";
+const TYPE_INCORRECT = "Incorrect Location";
 
 const rangeStartFromKey = (range, now = new Date()) => {
   if (range === "thisMonth") return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -48,7 +51,7 @@ export default function FeedbackReportsPage() {
   useEffect(() => {
     setLoading(true);
     const unsubscribe = subscribeFeedbackReports(
-      {},
+      { limit: 500 }, // keep realtime scalable + avoid heavy reads
       (rows) => {
         setReports(rows || []);
         setLoading(false);
@@ -77,6 +80,7 @@ export default function FeedbackReportsPage() {
     [reports, rangeStart]
   );
 
+  // existing 4 cards (keep)
   const metrics = useMemo(() => {
     const currentMonthKey = monthKey(now);
     const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -133,13 +137,49 @@ export default function FeedbackReportsPage() {
     ];
   }, [reports, now]);
 
+  // ✅ NEW: 3 cards for "New feedbacks" by type (pending)
+  const newByTypeMetrics = useMemo(() => {
+    const currentMonthKey = monthKey(now);
+    const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonthKey = monthKey(prevMonthDate);
+
+    const curMonth = reports.filter((r) => {
+      const d = toDateSafe(r.createdAt) || toDateSafe(r.updatedAt);
+      return d ? monthKey(d) === currentMonthKey : false;
+    });
+
+    const prevMonth = reports.filter((r) => {
+      const d = toDateSafe(r.createdAt) || toDateSafe(r.updatedAt);
+      return d ? monthKey(d) === prevMonthKey : false;
+    });
+
+    const build = (type, title, id) => {
+      const cur = curMonth.filter((r) => r.status === "pending" && r.type === type).length;
+      const prev = prevMonth.filter((r) => r.status === "pending" && r.type === type).length;
+
+      return {
+        id,
+        title,
+        value: String(cur),
+        deltaLabel: `${pctDelta(cur, prev)}% vs Last Month`,
+        deltaType: cur >= prev ? "up" : "down",
+        helperText: "Pending",
+      };
+    };
+
+    return [
+      build(TYPE_GENERAL, "New General Feedback", "new_general"),
+      build(TYPE_MISSING, "New Missing Car", "new_missing"),
+      build(TYPE_INCORRECT, "New Incorrect Location", "new_incorrect"),
+    ];
+  }, [reports, now]);
+
   const typeDistribution = useMemo(() => {
     const counts = new Map();
     filteredByRange.forEach((r) => {
       const key = r.type || "Unknown";
       counts.set(key, (counts.get(key) || 0) + 1);
     });
-
     return Array.from(counts.entries()).map(([name, value]) => ({ name, value }));
   }, [filteredByRange]);
 
@@ -193,8 +233,8 @@ export default function FeedbackReportsPage() {
         await deleteCarDiagramForReport({ carId: report.carId });
       }
 
+      // Snapshot will update UI automatically
       closeConfirm();
-      await load();
     } catch (e) {
       console.error(e);
     }
@@ -203,7 +243,13 @@ export default function FeedbackReportsPage() {
   return (
     <>
       <PageContainer>
+        {/* Existing metrics */}
         <FeedbackMetrics metrics={metrics} />
+
+        {/* ✅ NEW 3 BOXES */}
+        <div className="mt-4">
+          <FeedbackMetrics metrics={newByTypeMetrics} />
+        </div>
 
         <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
           <ChartCard

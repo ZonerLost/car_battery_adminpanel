@@ -10,11 +10,11 @@ const MonthlyReportsChart = ({ data = [], loading = false }) => {
   const hasBars = useMemo(() => chartData.some((item) => Number(item.total) > 0), [chartData]);
 
   return (
-    <div className="w-full h-64 sm:h-56">
+    <div className="w-full h-full min-h-[220px] sm:min-h-[240px] min-w-0">
       {loading ? (
         <div className="h-full flex items-center justify-center text-xs text-slate-500">Loading chart...</div>
       ) : hasBars ? (
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
           <BarChart data={chartData} barSize={24}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
             <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#6b7280" }} />

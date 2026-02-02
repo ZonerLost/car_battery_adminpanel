@@ -9,26 +9,31 @@ import { FiTrash2, FiEye } from "react-icons/fi";
 import ViewReportModal from "./ViewReportModal";
 import { toDateSafe } from "../../lib/dashboard/aggregateDashboard";
 
+const TYPE_GENERAL = "General Feedback";
+
 const formatCar = (report) => {
+  // High approach: car display depends on report.type, not on whether fields exist
+  if (report.type === TYPE_GENERAL) return "â€”";
+
+  const carStr = String(report.car ?? "").trim();
+  if (carStr) return carStr;
+
   const parts = [report.make, report.model].filter(Boolean);
 
-  const yf = Number.isFinite(report.yearFrom) ? report.yearFrom : Number(report.yearFrom);
-  const yt = Number.isFinite(report.yearTo) ? report.yearTo : Number(report.yearTo);
+  const year =
+    Number.isFinite(Number(report.year)) ? Number(report.year) :
+    Number.isFinite(Number(report.yearFrom)) ? Number(report.yearFrom) :
+    Number.isFinite(Number(report.yearTo)) ? Number(report.yearTo) :
+    null;
 
-  if (Number.isFinite(yf) && Number.isFinite(yt)) {
-    parts.push(yf === yt ? String(yf) : `${yf}-${yt}`);
-  } else if (Number.isFinite(yf)) {
-    parts.push(String(yf));
-  } else if (Number.isFinite(yt)) {
-    parts.push(String(yt));
-  }
+  if (Number.isFinite(year)) parts.push(String(year));
 
-  return parts.join(" ").trim() || "—";
+  return parts.join(" ").trim() || "â€”";
 };
 
 const formatDate = (value) => {
   const d = toDateSafe(value);
-  return d ? d.toLocaleDateString() : "—";
+  return d ? d.toLocaleDateString() : "â€”";
 };
 
 const ReportsOverviewTable = ({ reports = [], loading = false, onApprove, onReject, onDeleteDiagram }) => {
@@ -42,7 +47,8 @@ const ReportsOverviewTable = ({ reports = [], loading = false, onApprove, onReje
 
   const filtered = useMemo(() => {
     return reports.filter((r) => {
-      const searchText = `${r.code || r.id} ${r.type || ""} ${formatCar(r)} ${r.submittedByDisplay || r.submittedByEmail || ""}`.toLowerCase();
+      const carText = formatCar(r);
+      const searchText = `${r.code || r.id} ${r.type || ""} ${carText} ${r.submittedByDisplay || ""}`.toLowerCase();
       const matchesSearch = searchText.includes(search.toLowerCase());
       const matchesType = typeFilter === "all" ? true : r.type === typeFilter;
       const matchesStatus = statusFilter === "all" ? true : r.status === statusFilter;
@@ -54,12 +60,8 @@ const ReportsOverviewTable = ({ reports = [], loading = false, onApprove, onReje
   const pageRows = filtered.slice(startIndex, startIndex + pageSize);
 
   const renderStatusAction = (row) => {
-    if (row.status === "approved") {
-      return <StatusPill status="success" label="Approved" />;
-    }
-    if (row.status === "rejected") {
-      return <StatusPill status="missing" label="Rejected" />;
-    }
+    if (row.status === "approved") return <StatusPill status="success" label="Approved" />;
+    if (row.status === "rejected") return <StatusPill status="missing" label="Rejected" />;
 
     return (
       <div className="flex flex-wrap gap-2">
@@ -84,32 +86,16 @@ const ReportsOverviewTable = ({ reports = [], loading = false, onApprove, onReje
   };
 
   const columns = [
-    {
-      key: "id",
-      label: "Report ID",
-      render: (row) => row.code || row.id,
-    },
+    { key: "id", label: "Report ID", render: (row) => row.code || row.id },
     { key: "type", label: "Type" },
-    {
-      key: "car",
-      label: "Car (Make/Model/Year)",
-      render: (row) => formatCar(row),
-    },
+    { key: "car", label: "Car (Make/Model/Year)", render: (row) => formatCar(row) },
     {
       key: "submittedBy",
       label: "Submitted By",
-      render: (row) => row.submittedByDisplay || row.submittedByName || row.submittedByEmail || row.submittedEmail || "—",
+      render: (row) => row.submittedByDisplay || row.submittedByEmail || row.submittedBy || row.email || "â€”",
     },
-    {
-      key: "date",
-      label: "Date",
-      render: (row) => formatDate(row.createdAt || row.updatedAt),
-    },
-    {
-      key: "status",
-      label: "Status",
-      render: renderStatusAction,
-    },
+    { key: "date", label: "Date", render: (row) => formatDate(row.createdAt || row.updatedAt) },
+    { key: "status", label: "Status", render: renderStatusAction },
     {
       key: "actions",
       label: "Actions",
