@@ -1,602 +1,12 @@
-// /* eslint-disable no-unused-vars */
-// /* eslint-disable no-useless-escape */
-// import {
-//   addDoc,
-//   collection,
-//   deleteDoc,
-//   doc,
-//   getCountFromServer,
-//   getDoc,
-//   getDocs,
-//   limit,
-//   orderBy,
-//   query,
-//   serverTimestamp,
-//   startAfter,
-//   documentId,
-//   updateDoc,
-//   where,
-// } from "firebase/firestore";
-// import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
-// import { db, storage } from "../../lib/firebase";
-// import { inferTemplateId } from "../../config/vehicleTemplates";
-
-// const carsCol = () => collection(db, "modules", "carDatabase", "cars");
-
-// const trimText = (v) => String(v ?? "").trim();
-// const keyText = (v) => trimText(v).toLowerCase();
-
-// const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-
-// function coerceYearRange(values = {}) {
-//   const yfRaw = values.yearFrom ?? values.year;
-//   const ytRaw = values.yearTo ?? values.year;
-
-//   const yf =
-//     yfRaw === "" || yfRaw === undefined || yfRaw === null ? NaN : Number(yfRaw);
-//   const yt =
-//     ytRaw === "" || ytRaw === undefined || ytRaw === null ? NaN : Number(ytRaw);
-
-//   const hasYf = Number.isFinite(yf);
-//   const hasYt = Number.isFinite(yt);
-
-//   if (!hasYf && !hasYt) return { yearFrom: null, yearTo: null };
-//   if (hasYf && !hasYt) return { yearFrom: yf, yearTo: yf };
-//   if (!hasYf && hasYt) return { yearFrom: yt, yearTo: yt };
-//   return { yearFrom: Math.min(yf, yt), yearTo: Math.max(yf, yt) };
-// }
-
-// function safeFileName(name) {
-//   return String(name || "file")
-//     .replace(/\s+/g, "_")
-//     .replace(/[^\w.\-]+/g, "");
-// }
-
-// function isFileLike(input) {
-//   if (!input || typeof input !== "object") return false;
-//   if (typeof File !== "undefined" && input instanceof File) return true;
-//   return "name" in input && "size" in input;
-// }
-
-// function normalizeFiles(input) {
-//   if (!input) return {};
-//   if (isFileLike(input)) return { diagramFile: input };
-
-//   const files = {};
-//   if (isFileLike(input.thumbnailFile)) files.thumbnailFile = input.thumbnailFile;
-//   if (isFileLike(input.diagramFile)) files.diagramFile = input.diagramFile;
-//   return files;
-// }
-
-// function normalizeSearchToken(raw) {
-//   const s = keyText(raw);
-//   if (!s) return "";
-
-//   // if user types: "toyota corolla 2015" -> use first two words token
-//   const parts = s.split(/\s+/).filter(Boolean);
-//   if (parts.length >= 2) return `${parts[0]} ${parts[1]}`;
-//   return parts[0] || "";
-// }
-
-// const coerceNumber = (value) => {
-//   if (value === null || value === undefined) return null;
-//   const trimmed = typeof value === "string" ? value.trim() : value;
-//   if (trimmed === "") return null;
-//   const n = Number(trimmed);
-//   return Number.isFinite(n) ? n : null;
-// };
-
-// function buildSearchTokens({ make, model, bodyType, location, yearFrom, yearTo }) {
-//   const mk = keyText(make);
-//   const md = keyText(model);
-//   const bt = keyText(bodyType);
-//   const lc = keyText(location);
-
-//   const tokens = [
-//     mk,
-//     md,
-//     bt,
-//     lc,
-//     String(yearFrom || "").trim(),
-//     String(yearTo || "").trim(),
-//     mk && md ? `${mk} ${md}` : "",
-//     mk && md ? `${mk}-${md}` : "",
-//   ].filter(Boolean);
-
-//   return Array.from(new Set(tokens));
-// }
-
-// async function uploadToStorage({ carId, file, kind }) {
-//   const fileName = `${Date.now()}_${safeFileName(file.name)}`;
-//   const storagePath = `carDatabase/cars/${carId}/${kind}/${fileName}`;
-
-//   const storageRef = ref(storage, storagePath);
-//   await uploadBytes(storageRef, file, {
-//     contentType: file.type || "application/octet-stream",
-//   });
-
-//   const url = await getDownloadURL(storageRef);
-//   return { url, storagePath };
-// }
-
-// async function maybeDeleteObject(storagePath) {
-//   if (!storagePath) return;
-//   try {
-//     await deleteObject(ref(storage, storagePath));
-//   } catch (e) {
-//     console.warn("[storage] delete skipped", storagePath, e?.message || e);
-//   }
-// }
-
-// function coerceYearFilter(v) {
-//   const n = Number(v);
-//   return Number.isFinite(n) ? n : null;
-// }
-
-// function buildPagedConstraints(filters = {}) {
-//   const constraints = [];
-//   let needsYearOrdering = false;
-
-//   const status = filters.status || "all";
-//   const makeKey = keyText(filters.make);
-
-//   if (status !== "all") {
-//     constraints.push(where("status", "==", status));
-//   }
-
-//   if (makeKey) {
-//     constraints.push(where("makeKey", "==", makeKey));
-//   }
-
-//   const yf = coerceNumber(filters.yearFrom);
-//   const yt = coerceNumber(filters.yearTo);
-
-//   if (yf != null && yt != null) {
-//     const lo = Math.min(yf, yt);
-//     const hi = Math.max(yf, yt);
-//     constraints.push(where("yearFrom", ">=", lo));
-//     constraints.push(where("yearFrom", "<=", hi));
-//     needsYearOrdering = true;
-//   } else if (yf != null) {
-//     constraints.push(where("yearFrom", ">=", yf));
-//     needsYearOrdering = true;
-//   } else if (yt != null) {
-//     constraints.push(where("yearFrom", "<=", yt));
-//     needsYearOrdering = true;
-//   }
-
-//   const tokens = keyText(filters.search)
-//     .split(/\s+/)
-//     .filter(Boolean)
-//     .slice(0, 10);
-
-//   if (tokens.length > 0) {
-//     constraints.push(where("searchTokens", "array-contains-any", tokens));
-//   }
-
-//   return { constraints, tokens, needsYearOrdering };
-// }
-
-// function buildListConstraints(filters = {}) {
-//   const constraints = [];
-//   let yearMode = "none";
-
-//   if (filters.status && filters.status !== "all") {
-//     constraints.push(where("status", "==", filters.status));
-//   }
-
-//   const token = normalizeSearchToken(filters.search);
-//   if (token) {
-//     constraints.push(where("searchTokens", "array-contains", token));
-//   }
-
-//   const yf = coerceYearFilter(filters.yearFrom);
-//   const yt = coerceYearFilter(filters.yearTo);
-
-//   if (yf != null && yt != null) {
-//     if (yf === yt) {
-//       constraints.push(where("yearFrom", "==", yf));
-//       yearMode = "eq";
-//     } else {
-//       const lo = Math.min(yf, yt);
-//       const hi = Math.max(yf, yt);
-//       constraints.push(where("yearFrom", ">=", lo));
-//       constraints.push(where("yearFrom", "<=", hi));
-//       yearMode = "range";
-//     }
-//   } else if (yf != null) {
-//     constraints.push(where("yearFrom", "==", yf));
-//     yearMode = "eq";
-//   } else if (yt != null) {
-//     constraints.push(where("yearFrom", "==", yt));
-//     yearMode = "eq";
-//   }
-
-//   return { constraints, yearMode };
-// }
-
-// /** --------------------------- PAGINATED LIST ---------------------------- **/
-// export function buildCarsQuery({ pageSize = 25, cursor = null, filters = {} } = {}) {
-//   const normalizedPageSize = [25, 50, 100].includes(pageSize) ? pageSize : 25;
-//   const { constraints, needsYearOrdering } = buildPagedConstraints(filters);
-
-//   // Deterministic ordering for pagination
-//   const baseOrdering = needsYearOrdering
-//     ? [orderBy("yearFrom", "asc"), orderBy(documentId(), "desc")]
-//     : [orderBy("updatedAt", "desc"), orderBy(documentId(), "desc")];
-
-//   let q = query(carsCol(), ...constraints, ...baseOrdering, limit(normalizedPageSize + 1));
-//   if (cursor) {
-//     q = query(carsCol(), ...constraints, ...baseOrdering, startAfter(cursor), limit(normalizedPageSize + 1));
-//   }
-
-//   return q;
-// }
-
-// export async function fetchCarsPage({ pageSize = 25, cursor = null, filters = {} } = {}) {
-//   try {
-//     const normalizedPageSize = [25, 50, 100].includes(pageSize) ? pageSize : 25;
-//     const q = buildCarsQuery({ pageSize, cursor, filters });
-//     const snap = await getDocs(q);
-//     const allDocs = snap.docs;
-//     const rows = allDocs
-//       .map((d) => normalizeCarEntry(d))
-//       .filter((row) => {
-//         const yf = coerceNumber(filters.yearFrom);
-//         const yt = coerceNumber(filters.yearTo);
-//         if (yf == null && yt == null) return true;
-//         if (yf != null && row.yearTo != null && row.yearTo < yf) return false;
-//         if (yt != null && row.yearFrom != null && row.yearFrom > yt) return false;
-//         return true;
-//       });
-//     const trimmedRows = rows.slice(0, normalizedPageSize);
-//     const hasMore = allDocs.length > normalizedPageSize;
-//     const nextCursor = hasMore ? allDocs[normalizedPageSize - 1] : null;
-
-//     return {
-//       rows: trimmedRows,
-//       nextCursor,
-//       hasMore,
-//     };
-//   } catch (e) {
-//     const isIndex = e?.code === "failed-precondition" || /index/i.test(e?.message || "");
-//     if (isIndex) {
-//       console.error("[car-db] Missing Firestore index for fetchCarsPage", { filters, message: e?.message });
-//     } else {
-//       console.error("[car-db] fetchCarsPage failed", e);
-//     }
-//     throw e;
-//   }
-// }
-
-// export async function fetchCarEntriesPage({
-//   pageSize = 10,
-//   cursor = null, // DocumentSnapshot
-//   filters = {},
-// } = {}) {
-//   const res = await fetchCarsPage({ pageSize, cursor, filters });
-//   return { data: res.rows, lastDoc: res.nextCursor };
-// }
-
-// export async function listCarEntriesPaged(args = {}) {
-//   return fetchCarsPage(args);
-// }
-
-// /** ----------------------------- LIST ALL -------------------------------- **/
-// const normalizeDate = (value) => {
-//   if (!value) return null;
-//   if (value?.toDate) {
-//     try {
-//       return value.toDate();
-//     } catch {
-//       /* ignore */
-//     }
-//   }
-//   const d = new Date(value);
-//   return Number.isNaN(d.getTime()) ? null : d;
-// };
-
-// export const normalizeCarEntry = (docSnapOrData) => {
-//   const base = typeof docSnapOrData?.data === "function" ? docSnapOrData.data() : docSnapOrData || {};
-//   const statusNorm = keyText(base.status) || "active";
-
-//   const yf = Number(base.yearFrom ?? base.year);
-//   const yt = Number(base.yearTo ?? base.year);
-
-//   return {
-//     id: docSnapOrData?.id || base.id,
-//     ...base,
-//     status: statusNorm,
-//     statusNorm,
-//     yearFrom: Number.isFinite(yf) ? yf : null,
-//     yearTo: Number.isFinite(yt) ? yt : null,
-//     createdAt: normalizeDate(base.createdAt),
-//     updatedAt: normalizeDate(base.updatedAt),
-//   };
-// };
-
-// export async function listCarEntries(options = {}) {
-//   const { status = "all", limit: limitSize = 250, order = "desc" } = options;
-
-//   const constraints = [orderBy("updatedAt", order === "asc" ? "asc" : "desc")];
-
-//   if (status && status !== "all") {
-//     constraints.push(where("status", "==", status));
-//   }
-
-//   if (limitSize) {
-//     constraints.push(limit(limitSize));
-//   }
-
-//   try {
-//     const snap = await getDocs(query(carsCol(), ...constraints));
-//     return snap.docs.map((d) => normalizeCarEntry(d));
-//   } catch (e) {
-//     if (e?.code === "failed-precondition") {
-//       console.error("[car-db] Missing Firestore index for listCarEntries. See docs/firestore-indexes.md or console link.", e);
-//     } else {
-//       console.error("[car-db] listCarEntries failed", e);
-//     }
-//     throw e;
-//   }
-// }
-
-// /** ------------------------------ COUNT ---------------------------------- **/
-// export async function countCarEntries(filters = {}) {
-//   const { constraints } = buildPagedConstraints(filters);
-
-//   // count query doesn't need orderBy
-//   const q = query(carsCol(), ...constraints);
-//   const agg = await getCountFromServer(q);
-//   return agg.data().count || 0;
-// }
-
-// /** ------------------------------ GET ONE -------------------------------- **/
-// export async function getCarEntry(carId) {
-//   const snap = await getDoc(doc(carsCol(), carId));
-//   if (!snap.exists()) return null;
-//   return { id: snap.id, ...snap.data() };
-// }
-
-// /** ------------------------------ CREATE --------------------------------- **/
-// export async function createCarEntry(values, filesOrDiagramFile) {
-//   const files = normalizeFiles(filesOrDiagramFile);
-
-//   const make = trimText(values?.make);
-//   const model = trimText(values?.model);
-//   const bodyType = trimText(values?.bodyType);
-//   const location = trimText(values?.location);
-
-//   const { yearFrom, yearTo } = coerceYearRange(values);
-//   const templateId = trimText(values?.templateId) || inferTemplateId(bodyType);
-
-//   const basePayload = {
-//     make,
-//     model,
-//     makeKey: keyText(make),
-//     modelKey: keyText(model),
-
-//     yearFrom,
-//     yearTo,
-
-//     bodyType,
-//     location,
-
-//     templateId,
-
-//     description: trimText(values?.description),
-
-//     status: values?.status === "inactive" ? "inactive" : "active",
-//     isActive: values?.status === "inactive" ? false : true,
-
-//     thumbnailUrl: null,
-//     thumbnailStoragePath: null,
-//     thumbnailStatus: "missing",
-//     thumbnailUploadedAt: null,
-
-//     diagramUrl: null,
-//     diagramStoragePath: null,
-//     diagramStatus: "missing",
-//     diagramUploadedAt: null,
-
-//     marker: null,
-//     markerStatus: "not-assigned",
-
-//     reportsPending: Number(values?.reportsPending || 0),
-
-//     searchTokens: buildSearchTokens({
-//       make,
-//       model,
-//       bodyType,
-//       location,
-//       yearFrom,
-//       yearTo,
-//     }),
-
-//     createdAt: serverTimestamp(),
-//     updatedAt: serverTimestamp(),
-//   };
-
-//   const created = await addDoc(carsCol(), basePayload);
-//   const carId = created.id;
-
-//   if (files.thumbnailFile) {
-//     const { url, storagePath } = await uploadToStorage({
-//       carId,
-//       file: files.thumbnailFile,
-//       kind: "thumbnail",
-//     });
-
-//     await updateDoc(doc(carsCol(), carId), {
-//       thumbnailUrl: url,
-//       thumbnailStoragePath: storagePath,
-//       thumbnailStatus: "uploaded",
-//       thumbnailUploadedAt: serverTimestamp(),
-//       updatedAt: serverTimestamp(),
-//     });
-//   }
-
-//   // Optional diagram override (template is default)
-//   if (files.diagramFile) {
-//     const { url, storagePath } = await uploadToStorage({
-//       carId,
-//       file: files.diagramFile,
-//       kind: "diagram",
-//     });
-
-//     await updateDoc(doc(carsCol(), carId), {
-//       diagramUrl: url,
-//       diagramStoragePath: storagePath,
-//       diagramStatus: "uploaded",
-//       markerStatus: "pending",
-//       diagramUploadedAt: serverTimestamp(),
-//       updatedAt: serverTimestamp(),
-//     });
-//   }
-
-//   return carId;
-// }
-
-// /** ------------------------------ UPDATE --------------------------------- **/
-// export async function updateCarEntry(carId, values, filesOrDiagramFile) {
-//   const files = normalizeFiles(filesOrDiagramFile);
-
-//   const docRef = doc(carsCol(), carId);
-//   const existingSnap = await getDoc(docRef);
-//   const existing = existingSnap.exists() ? existingSnap.data() : {};
-
-//   const make = trimText(values?.make);
-//   const model = trimText(values?.model);
-//   const bodyType = trimText(values?.bodyType);
-//   const location = trimText(values?.location);
-
-//   const { yearFrom, yearTo } = coerceYearRange(values);
-//   const templateId = trimText(values?.templateId) || inferTemplateId(bodyType);
-
-//   const patch = {
-//     make,
-//     model,
-//     makeKey: keyText(make),
-//     modelKey: keyText(model),
-
-//     yearFrom,
-//     yearTo,
-
-//     bodyType,
-//     location,
-
-//     templateId,
-
-//     description: trimText(values?.description),
-
-//     status: values?.status === "inactive" ? "inactive" : "active",
-//     isActive: values?.status === "inactive" ? false : true,
-
-//     reportsPending: Number(values?.reportsPending || 0),
-
-//     searchTokens: buildSearchTokens({
-//       make,
-//       model,
-//       bodyType,
-//       location,
-//       yearFrom,
-//       yearTo,
-//     }),
-
-//     updatedAt: serverTimestamp(),
-//   };
-
-//   const patchExtras = {};
-
-//   if (files.thumbnailFile) {
-//     await maybeDeleteObject(existing?.thumbnailStoragePath);
-
-//     const { url, storagePath } = await uploadToStorage({
-//       carId,
-//       file: files.thumbnailFile,
-//       kind: "thumbnail",
-//     });
-
-//     patchExtras.thumbnailUrl = url;
-//     patchExtras.thumbnailStoragePath = storagePath;
-//     patchExtras.thumbnailStatus = "uploaded";
-//     patchExtras.thumbnailUploadedAt = serverTimestamp();
-//   }
-
-//   if (files.diagramFile) {
-//     await maybeDeleteObject(existing?.diagramStoragePath);
-
-//     const { url, storagePath } = await uploadToStorage({
-//       carId,
-//       file: files.diagramFile,
-//       kind: "diagram",
-//     });
-
-//     patchExtras.diagramUrl = url;
-//     patchExtras.diagramStoragePath = storagePath;
-//     patchExtras.diagramStatus = "uploaded";
-//     patchExtras.diagramUploadedAt = serverTimestamp();
-
-//     // Reset marker if diagram changes
-//     patchExtras.marker = null;
-//     patchExtras.markerStatus = "pending";
-//   }
-
-//   await updateDoc(docRef, { ...patch, ...patchExtras });
-// }
-
-// /** ------------------------- MARKER UPDATE ------------------------------- **/
-// export async function saveMarker(carId, marker) {
-//   let xPct = marker?.xPct;
-//   let yPct = marker?.yPct;
-
-//   if (xPct === undefined && marker?.x !== undefined) xPct = Number(marker.x) * 100;
-//   if (yPct === undefined && marker?.y !== undefined) yPct = Number(marker.y) * 100;
-
-//   xPct = clamp(Number(xPct), 0, 100);
-//   yPct = clamp(Number(yPct), 0, 100);
-
-//   if (!Number.isFinite(xPct) || !Number.isFinite(yPct)) {
-//     throw new Error("Invalid marker coordinates");
-//   }
-
-//   await updateDoc(doc(carsCol(), carId), {
-//     marker: { xPct, yPct },
-//     markerStatus: "set",
-//     updatedAt: serverTimestamp(),
-//   });
-// }
-
-// /** ---------------------------- TOGGLE ----------------------------------- **/
-// export async function setCarActive(carId, active) {
-//   await updateDoc(doc(carsCol(), carId), {
-//     isActive: !!active,
-//     status: active ? "active" : "inactive",
-//     updatedAt: serverTimestamp(),
-//   });
-// }
-
-// /** ---------------------------- DELETE ----------------------------------- **/
-// export async function deleteCarEntry(carId) {
-//   const docRef = doc(carsCol(), carId);
-//   const snap = await getDoc(docRef);
-
-//   if (snap.exists()) {
-//     const data = snap.data();
-//     await maybeDeleteObject(data.thumbnailStoragePath);
-//     await maybeDeleteObject(data.diagramStoragePath);
-//   }
-
-//   await deleteDoc(docRef);
-// }
-
 /* eslint-disable no-unused-vars */
 /* eslint-disable no-useless-escape */
 import {
   addDoc,
   collection,
   deleteDoc,
+  deleteField,
   doc,
+  documentId,
   getCountFromServer,
   getDoc,
   getDocs,
@@ -604,8 +14,8 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   startAfter,
-  documentId,
   updateDoc,
   where,
 } from "firebase/firestore";
@@ -614,26 +24,35 @@ import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage
 import { db, storage } from "../../lib/firebase";
 import { inferTemplateId } from "../../config/vehicleTemplates";
 
+const moduleDocRef = () => doc(db, "modules", "carDatabase");
 const carsCol = () => collection(db, "modules", "carDatabase", "cars");
 
-const trimText = (v) => String(v ?? "").trim();
-const keyText = (v) => trimText(v).toLowerCase();
-const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+const trimText = (value) => String(value ?? "").trim();
+const keyText = (value) => trimText(value).toLowerCase();
+const clamp = (value, min, max) => Math.max(min, Math.min(max, Number(value)));
 
 function coerceYearRange(values = {}) {
-  const yfRaw = values.yearFrom ?? values.year;
-  const ytRaw = values.yearTo ?? values.year;
+  const yearFromRaw = values.yearFrom ?? values.year;
+  const yearToRaw = values.yearTo ?? values.year;
 
-  const yf = yfRaw === "" || yfRaw === undefined || yfRaw === null ? NaN : Number(yfRaw);
-  const yt = ytRaw === "" || ytRaw === undefined || ytRaw === null ? NaN : Number(ytRaw);
+  const yearFrom =
+    yearFromRaw === "" || yearFromRaw === undefined || yearFromRaw === null
+      ? NaN
+      : Number(yearFromRaw);
+  const yearTo =
+    yearToRaw === "" || yearToRaw === undefined || yearToRaw === null ? NaN : Number(yearToRaw);
 
-  const hasYf = Number.isFinite(yf);
-  const hasYt = Number.isFinite(yt);
+  const hasYearFrom = Number.isFinite(yearFrom);
+  const hasYearTo = Number.isFinite(yearTo);
 
-  if (!hasYf && !hasYt) return { yearFrom: null, yearTo: null };
-  if (hasYf && !hasYt) return { yearFrom: yf, yearTo: yf };
-  if (!hasYf && hasYt) return { yearFrom: yt, yearTo: yt };
-  return { yearFrom: Math.min(yf, yt), yearTo: Math.max(yf, yt) };
+  if (!hasYearFrom && !hasYearTo) return { yearFrom: null, yearTo: null };
+  if (hasYearFrom && !hasYearTo) return { yearFrom, yearTo: yearFrom };
+  if (!hasYearFrom && hasYearTo) return { yearFrom: yearTo, yearTo };
+
+  return {
+    yearFrom: Math.min(yearFrom, yearTo),
+    yearTo: Math.max(yearFrom, yearTo),
+  };
 }
 
 function safeFileName(name) {
@@ -671,60 +90,90 @@ const coerceNumber = (value) => {
   if (value === null || value === undefined) return null;
   const trimmed = typeof value === "string" ? value.trim() : value;
   if (trimmed === "") return null;
-  const n = Number(trimmed);
-  return Number.isFinite(n) ? n : null;
+
+  const numberValue = Number(trimmed);
+  return Number.isFinite(numberValue) ? numberValue : null;
 };
 
-function toMarker(item) {
-  if (!item) return null;
+function toMarker(value) {
+  if (!value || typeof value !== "object") return null;
 
-  let xPct = item.xPct;
-  let yPct = item.yPct;
+  let xPct = value.xPct;
+  let yPct = value.yPct;
 
-  if (xPct === undefined && item.x !== undefined) xPct = Number(item.x) * 100;
-  if (yPct === undefined && item.y !== undefined) yPct = Number(item.y) * 100;
+  if (xPct === undefined && value.x !== undefined) xPct = Number(value.x) * 100;
+  if (yPct === undefined && value.y !== undefined) yPct = Number(value.y) * 100;
 
-  xPct = clamp(Number(xPct), 0, 100);
-  yPct = clamp(Number(yPct), 0, 100);
+  xPct = clamp(xPct, 0, 100);
+  yPct = clamp(yPct, 0, 100);
 
   if (!Number.isFinite(xPct) || !Number.isFinite(yPct)) return null;
+
   return {
     xPct: Number(xPct.toFixed(2)),
     yPct: Number(yPct.toFixed(2)),
   };
 }
 
-function normalizeMarkers(markers, markerValue) {
-  if (Array.isArray(markers) && markers.length > 0) {
-    return markers.map(toMarker).filter(Boolean);
-  }
-
-  const single = toMarker(markerValue);
-  return single ? [single] : [];
-}
-
 function buildSearchTokens({ make, model, bodyType, location, description, yearFrom, yearTo }) {
-  const mk = keyText(make);
-  const md = keyText(model);
-  const bt = keyText(bodyType);
-  const lc = keyText(location);
-  const desc = keyText(description);
+  const makeKey = keyText(make);
+  const modelKey = keyText(model);
+  const bodyTypeKey = keyText(bodyType);
+  const locationKey = keyText(location);
+  const descriptionKey = keyText(description);
 
-  const descriptionTokens = desc.split(/[\/,\-]/g).map((item) => item.trim()).filter(Boolean);
+  const descriptionTokens = descriptionKey
+    .split(/[\/,\-]/g)
+    .map((item) => item.trim())
+    .filter(Boolean);
 
   const tokens = [
-    mk,
-    md,
-    bt,
-    lc,
+    makeKey,
+    modelKey,
+    bodyTypeKey,
+    locationKey,
     String(yearFrom || "").trim(),
     String(yearTo || "").trim(),
-    mk && md ? `${mk} ${md}` : "",
-    mk && md ? `${mk}-${md}` : "",
+    makeKey && modelKey ? `${makeKey} ${modelKey}` : "",
+    makeKey && modelKey ? `${makeKey}-${modelKey}` : "",
     ...descriptionTokens,
   ].filter(Boolean);
 
   return Array.from(new Set(tokens));
+}
+
+function normalizeDiagramStatus({ diagramStatus, diagramUrl, templateId }) {
+  const status = keyText(diagramStatus);
+
+  if (diagramUrl) return "uploaded";
+  if (templateId) return "template";
+  if (status === "pending") return "pending";
+  return "missing";
+}
+
+function normalizeMarkerStatus(markerStatus, marker) {
+  const status = keyText(markerStatus);
+
+  if (marker) return "set";
+  if (status === "pending") return "pending";
+  return "not-assigned";
+}
+
+async function ensureCarDatabaseModuleDoc() {
+  const refValue = moduleDocRef();
+  const snap = await getDoc(refValue);
+  const existing = snap.exists() ? snap.data() : null;
+
+  await setDoc(
+    refValue,
+    {
+      key: "carDatabase",
+      title: "Car Database",
+      updatedAt: serverTimestamp(),
+      ...(existing?.createdAt ? {} : { createdAt: serverTimestamp() }),
+    },
+    { merge: true }
+  );
 }
 
 async function uploadToStorage({ carId, file, kind }) {
@@ -742,6 +191,7 @@ async function uploadToStorage({ carId, file, kind }) {
 
 async function maybeDeleteObject(storagePath) {
   if (!storagePath) return;
+
   try {
     await deleteObject(ref(storage, storagePath));
   } catch (error) {
@@ -749,9 +199,9 @@ async function maybeDeleteObject(storagePath) {
   }
 }
 
-function coerceYearFilter(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
+function coerceYearFilter(value) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
 }
 
 function buildPagedConstraints(filters = {}) {
@@ -769,20 +219,20 @@ function buildPagedConstraints(filters = {}) {
     constraints.push(where("makeKey", "==", makeKey));
   }
 
-  const yf = coerceNumber(filters.yearFrom);
-  const yt = coerceNumber(filters.yearTo);
+  const yearFrom = coerceNumber(filters.yearFrom);
+  const yearTo = coerceNumber(filters.yearTo);
 
-  if (yf != null && yt != null) {
-    const lo = Math.min(yf, yt);
-    const hi = Math.max(yf, yt);
-    constraints.push(where("yearFrom", ">=", lo));
-    constraints.push(where("yearFrom", "<=", hi));
+  if (yearFrom != null && yearTo != null) {
+    const lowerBound = Math.min(yearFrom, yearTo);
+    const upperBound = Math.max(yearFrom, yearTo);
+    constraints.push(where("yearFrom", ">=", lowerBound));
+    constraints.push(where("yearFrom", "<=", upperBound));
     needsYearOrdering = true;
-  } else if (yf != null) {
-    constraints.push(where("yearFrom", ">=", yf));
+  } else if (yearFrom != null) {
+    constraints.push(where("yearFrom", ">=", yearFrom));
     needsYearOrdering = true;
-  } else if (yt != null) {
-    constraints.push(where("yearFrom", "<=", yt));
+  } else if (yearTo != null) {
+    constraints.push(where("yearFrom", "<=", yearTo));
     needsYearOrdering = true;
   }
 
@@ -795,7 +245,7 @@ function buildPagedConstraints(filters = {}) {
     constraints.push(where("searchTokens", "array-contains-any", tokens));
   }
 
-  return { constraints, tokens, needsYearOrdering };
+  return { constraints, needsYearOrdering };
 }
 
 function buildListConstraints(filters = {}) {
@@ -811,25 +261,25 @@ function buildListConstraints(filters = {}) {
     constraints.push(where("searchTokens", "array-contains", token));
   }
 
-  const yf = coerceYearFilter(filters.yearFrom);
-  const yt = coerceYearFilter(filters.yearTo);
+  const yearFrom = coerceYearFilter(filters.yearFrom);
+  const yearTo = coerceYearFilter(filters.yearTo);
 
-  if (yf != null && yt != null) {
-    if (yf === yt) {
-      constraints.push(where("yearFrom", "==", yf));
+  if (yearFrom != null && yearTo != null) {
+    if (yearFrom === yearTo) {
+      constraints.push(where("yearFrom", "==", yearFrom));
       yearMode = "eq";
     } else {
-      const lo = Math.min(yf, yt);
-      const hi = Math.max(yf, yt);
-      constraints.push(where("yearFrom", ">=", lo));
-      constraints.push(where("yearFrom", "<=", hi));
+      const lowerBound = Math.min(yearFrom, yearTo);
+      const upperBound = Math.max(yearFrom, yearTo);
+      constraints.push(where("yearFrom", ">=", lowerBound));
+      constraints.push(where("yearFrom", "<=", upperBound));
       yearMode = "range";
     }
-  } else if (yf != null) {
-    constraints.push(where("yearFrom", "==", yf));
+  } else if (yearFrom != null) {
+    constraints.push(where("yearFrom", "==", yearFrom));
     yearMode = "eq";
-  } else if (yt != null) {
-    constraints.push(where("yearFrom", "==", yt));
+  } else if (yearTo != null) {
+    constraints.push(where("yearFrom", "==", yearTo));
     yearMode = "eq";
   }
 
@@ -845,6 +295,7 @@ export function buildCarsQuery({ pageSize = 25, cursor = null, filters = {} } = 
     : [orderBy("updatedAt", "desc"), orderBy(documentId(), "desc")];
 
   let q = query(carsCol(), ...constraints, ...baseOrdering, limit(normalizedPageSize + 1));
+
   if (cursor) {
     q = query(
       carsCol(),
@@ -864,14 +315,16 @@ export async function fetchCarsPage({ pageSize = 25, cursor = null, filters = {}
     const q = buildCarsQuery({ pageSize, cursor, filters });
     const snap = await getDocs(q);
     const allDocs = snap.docs;
+
     const rows = allDocs
-      .map((d) => normalizeCarEntry(d))
+      .map((entry) => normalizeCarEntry(entry))
       .filter((row) => {
-        const yf = coerceNumber(filters.yearFrom);
-        const yt = coerceNumber(filters.yearTo);
-        if (yf == null && yt == null) return true;
-        if (yf != null && row.yearTo != null && row.yearTo < yf) return false;
-        if (yt != null && row.yearFrom != null && row.yearFrom > yt) return false;
+        const yearFrom = coerceNumber(filters.yearFrom);
+        const yearTo = coerceNumber(filters.yearTo);
+
+        if (yearFrom == null && yearTo == null) return true;
+        if (yearFrom != null && row.yearTo != null && row.yearTo < yearFrom) return false;
+        if (yearTo != null && row.yearFrom != null && row.yearFrom > yearTo) return false;
         return true;
       });
 
@@ -886,6 +339,7 @@ export async function fetchCarsPage({ pageSize = 25, cursor = null, filters = {}
     };
   } catch (error) {
     const isIndex = error?.code === "failed-precondition" || /index/i.test(error?.message || "");
+
     if (isIndex) {
       console.error("[car-db] Missing Firestore index for fetchCarsPage", {
         filters,
@@ -894,6 +348,7 @@ export async function fetchCarsPage({ pageSize = 25, cursor = null, filters = {}
     } else {
       console.error("[car-db] fetchCarsPage failed", error);
     }
+
     throw error;
   }
 }
@@ -903,8 +358,8 @@ export async function fetchCarEntriesPage({
   cursor = null,
   filters = {},
 } = {}) {
-  const res = await fetchCarsPage({ pageSize, cursor, filters });
-  return { data: res.rows, lastDoc: res.nextCursor };
+  const result = await fetchCarsPage({ pageSize, cursor, filters });
+  return { data: result.rows, lastDoc: result.nextCursor };
 }
 
 export async function listCarEntriesPaged(args = {}) {
@@ -913,39 +368,41 @@ export async function listCarEntriesPaged(args = {}) {
 
 const normalizeDate = (value) => {
   if (!value) return null;
+
   if (value?.toDate) {
     try {
       return value.toDate();
     } catch {
-      // ignore
+      return null;
     }
   }
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
+
+  const dateValue = new Date(value);
+  return Number.isNaN(dateValue.getTime()) ? null : dateValue;
 };
 
 export const normalizeCarEntry = (docSnapOrData) => {
   const base =
     typeof docSnapOrData?.data === "function" ? docSnapOrData.data() : docSnapOrData || {};
-  const statusNorm = keyText(base.status) || "active";
+  const { markers, ...rest } = base;
 
-  const yf = Number(base.yearFrom ?? base.year);
-  const yt = Number(base.yearTo ?? base.year);
-  const markers = normalizeMarkers(base.markers, base.marker);
+  const statusNorm = keyText(base.status) || "active";
+  const yearFrom = Number(base.yearFrom ?? base.year);
+  const yearTo = Number(base.yearTo ?? base.year);
+  const marker = toMarker(base.marker);
 
   return {
     id: docSnapOrData?.id || base.id,
-    ...base,
+    ...rest,
     status: statusNorm,
     statusNorm,
-    yearFrom: Number.isFinite(yf) ? yf : null,
-    yearTo: Number.isFinite(yt) ? yt : null,
+    yearFrom: Number.isFinite(yearFrom) ? yearFrom : null,
+    yearTo: Number.isFinite(yearTo) ? yearTo : null,
     createdAt: normalizeDate(base.createdAt),
     updatedAt: normalizeDate(base.updatedAt),
-    diagramStatus: base.diagramStatus || (base.diagramUrl ? "uploaded" : "template"),
-    marker: markers[0] || null,
-    markers,
-    markerStatus: base.markerStatus || (markers.length > 0 ? "set" : "not-assigned"),
+    diagramStatus: normalizeDiagramStatus(base),
+    marker,
+    markerStatus: normalizeMarkerStatus(base.markerStatus, marker),
   };
 };
 
@@ -963,7 +420,7 @@ export async function listCarEntries(options = {}) {
 
   try {
     const snap = await getDocs(query(carsCol(), ...constraints));
-    return snap.docs.map((d) => normalizeCarEntry(d));
+    return snap.docs.map((entry) => normalizeCarEntry(entry));
   } catch (error) {
     if (error?.code === "failed-precondition") {
       console.error(
@@ -973,6 +430,7 @@ export async function listCarEntries(options = {}) {
     } else {
       console.error("[car-db] listCarEntries failed", error);
     }
+
     throw error;
   }
 }
@@ -980,8 +438,8 @@ export async function listCarEntries(options = {}) {
 export async function countCarEntries(filters = {}) {
   const { constraints } = buildPagedConstraints(filters);
   const q = query(carsCol(), ...constraints);
-  const agg = await getCountFromServer(q);
-  return agg.data().count || 0;
+  const aggregate = await getCountFromServer(q);
+  return aggregate.data().count || 0;
 }
 
 export async function getCarEntry(carId) {
@@ -991,8 +449,9 @@ export async function getCarEntry(carId) {
 }
 
 export async function createCarEntry(values, filesOrDiagramFile) {
-  const files = normalizeFiles(filesOrDiagramFile);
+  await ensureCarDatabaseModuleDoc();
 
+  const files = normalizeFiles(filesOrDiagramFile);
   const make = trimText(values?.make);
   const model = trimText(values?.model);
   const bodyType = trimText(values?.bodyType);
@@ -1007,35 +466,25 @@ export async function createCarEntry(values, filesOrDiagramFile) {
     model,
     makeKey: keyText(make),
     modelKey: keyText(model),
-
     yearFrom,
     yearTo,
-
     bodyType,
     location,
     description,
-
     templateId,
-
     status: values?.status === "inactive" ? "inactive" : "active",
     isActive: values?.status === "inactive" ? false : true,
-
     thumbnailUrl: null,
     thumbnailStoragePath: null,
     thumbnailStatus: "missing",
     thumbnailUploadedAt: null,
-
     diagramUrl: null,
     diagramStoragePath: null,
-    diagramStatus: files.diagramFile ? "uploaded" : "template",
+    diagramStatus: templateId ? "template" : "missing",
     diagramUploadedAt: null,
-
     marker: null,
-    markers: [],
     markerStatus: "not-assigned",
-
     reportsPending: Number(values?.reportsPending || 0),
-
     searchTokens: buildSearchTokens({
       make,
       model,
@@ -1045,7 +494,6 @@ export async function createCarEntry(values, filesOrDiagramFile) {
       yearFrom,
       yearTo,
     }),
-
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
@@ -1066,6 +514,7 @@ export async function createCarEntry(values, filesOrDiagramFile) {
       thumbnailStatus: "uploaded",
       thumbnailUploadedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      markers: deleteField(),
     });
   }
 
@@ -1082,6 +531,7 @@ export async function createCarEntry(values, filesOrDiagramFile) {
       diagramStatus: "uploaded",
       diagramUploadedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      markers: deleteField(),
     });
   }
 
@@ -1089,8 +539,9 @@ export async function createCarEntry(values, filesOrDiagramFile) {
 }
 
 export async function updateCarEntry(carId, values, filesOrDiagramFile) {
-  const files = normalizeFiles(filesOrDiagramFile);
+  await ensureCarDatabaseModuleDoc();
 
+  const files = normalizeFiles(filesOrDiagramFile);
   const docRef = doc(carsCol(), carId);
   const existingSnap = await getDoc(docRef);
   const existing = existingSnap.exists() ? existingSnap.data() : {};
@@ -1109,21 +560,15 @@ export async function updateCarEntry(carId, values, filesOrDiagramFile) {
     model,
     makeKey: keyText(make),
     modelKey: keyText(model),
-
     yearFrom,
     yearTo,
-
     bodyType,
     location,
     description,
-
     templateId,
-
     status: values?.status === "inactive" ? "inactive" : "active",
     isActive: values?.status === "inactive" ? false : true,
-
     reportsPending: Number(values?.reportsPending || 0),
-
     searchTokens: buildSearchTokens({
       make,
       model,
@@ -1133,8 +578,8 @@ export async function updateCarEntry(carId, values, filesOrDiagramFile) {
       yearFrom,
       yearTo,
     }),
-
     updatedAt: serverTimestamp(),
+    markers: deleteField(),
   };
 
   const patchExtras = {};
@@ -1168,17 +613,14 @@ export async function updateCarEntry(carId, values, filesOrDiagramFile) {
     patchExtras.diagramStoragePath = storagePath;
     patchExtras.diagramStatus = "uploaded";
     patchExtras.diagramUploadedAt = serverTimestamp();
-
     patchExtras.marker = null;
-    patchExtras.markers = [];
     patchExtras.markerStatus = "pending";
   } else if (!existing?.diagramUrl) {
-    patchExtras.diagramStatus = "template";
+    patchExtras.diagramStatus = templateId ? "template" : "missing";
   }
 
   if (didTemplateChange && !files.diagramFile) {
     patchExtras.marker = null;
-    patchExtras.markers = [];
     patchExtras.markerStatus = "pending";
   }
 
@@ -1186,31 +628,29 @@ export async function updateCarEntry(carId, values, filesOrDiagramFile) {
 }
 
 export async function saveMarker(carId, markerValue) {
-  const nextMarker = toMarker(markerValue);
-  if (!nextMarker) {
+  await ensureCarDatabaseModuleDoc();
+
+  const marker = toMarker(markerValue);
+  if (!marker) {
     throw new Error("Invalid marker coordinates");
   }
 
-  const docRef = doc(carsCol(), carId);
-  const existingSnap = await getDoc(docRef);
-  const existing = existingSnap.exists() ? existingSnap.data() : {};
-  const existingMarkers = normalizeMarkers(existing?.markers, existing?.marker);
-  const nextMarkers =
-    existingMarkers.length > 1 ? [nextMarker, ...existingMarkers.slice(1)] : [nextMarker];
-
-  await updateDoc(docRef, {
-    marker: nextMarker,
-    markers: nextMarkers,
+  await updateDoc(doc(carsCol(), carId), {
+    marker,
     markerStatus: "set",
     updatedAt: serverTimestamp(),
+    markers: deleteField(),
   });
 }
 
 export async function setCarActive(carId, active) {
+  await ensureCarDatabaseModuleDoc();
+
   await updateDoc(doc(carsCol(), carId), {
     isActive: !!active,
     status: active ? "active" : "inactive",
     updatedAt: serverTimestamp(),
+    markers: deleteField(),
   });
 }
 

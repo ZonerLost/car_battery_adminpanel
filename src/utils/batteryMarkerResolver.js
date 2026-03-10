@@ -1,6 +1,6 @@
 export const DEFAULT_TEMPLATE_ID = "sedan_top_v1";
 
-const clamp = (n, min = 0, max = 100) => Math.max(min, Math.min(max, Number(n)));
+const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, Number(value)));
 
 function normalizeText(value = "") {
   return String(value)
@@ -21,7 +21,7 @@ function marker(xPct, yPct) {
   };
 }
 
-export function resolveSingleBatteryMarker(locationText = "") {
+export function resolvePrimaryBatteryMarker(locationText = "") {
   const text = normalizeText(locationText);
 
   if (!text) return null;
@@ -102,6 +102,7 @@ export function resolveSingleBatteryMarker(locationText = "") {
   if (text.includes("under front driver's side seat")) return marker(42, 46);
   if (text.includes("under front passenger seat")) return marker(58, 46);
   if (text.includes("behind passenger seat")) return marker(58, 53);
+
   if (text.includes("under the driver's seat") || text.includes("under driver's seat")) {
     return marker(42, 49);
   }
@@ -134,55 +135,22 @@ export function resolveSingleBatteryMarker(locationText = "") {
 
   const fallbackX = text.includes("driver's side") ? 36 : text.includes("passenger's side") ? 64 : 50;
   const fallbackY = text.includes("rear") ? 78 : text.includes("front") ? 20 : 50;
+
   return marker(fallbackX, fallbackY);
 }
 
-export function resolveBatteryMarkers(locationText = "") {
-  const source = String(locationText || "").trim();
-  if (!source) return [];
+export function normalizeMarker(markerValue) {
+  if (!markerValue || typeof markerValue !== "object") return null;
 
-  const normalized = normalizeText(source);
+  let xPct = markerValue.xPct;
+  let yPct = markerValue.yPct;
 
-  if (
-    normalized.includes("passenger side and drivers") &&
-    normalized.includes("against the back of the rear seat")
-  ) {
-    return [marker(35, 74), marker(65, 74)];
-  }
+  if (xPct === undefined && markerValue.x !== undefined) xPct = Number(markerValue.x) * 100;
+  if (yPct === undefined && markerValue.y !== undefined) yPct = Number(markerValue.y) * 100;
 
-  if (normalized.startsWith("2 batteries")) {
-    const cleaned = source.replace(/^2 batteries\s*-\s*/i, "");
-    return cleaned
-      .split(/\s+(?:and|&)\s+/i)
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .map(resolveSingleBatteryMarker)
-      .filter(Boolean);
-  }
+  xPct = clamp(xPct);
+  yPct = clamp(yPct);
 
-  const single = resolveSingleBatteryMarker(source);
-  return single ? [single] : [];
-}
-
-export function resolvePrimaryBatteryMarker(locationText = "") {
-  return resolveBatteryMarkers(locationText)[0] || null;
-}
-
-export function normalizeMarkerList(markers, markerValue) {
-  if (Array.isArray(markers) && markers.length > 0) {
-    return markers
-      .map((item) => {
-        const xPct = Number(item?.xPct);
-        const yPct = Number(item?.yPct);
-        if (!Number.isFinite(xPct) || !Number.isFinite(yPct)) return null;
-        return marker(xPct, yPct);
-      })
-      .filter(Boolean);
-  }
-
-  if (markerValue?.xPct != null && markerValue?.yPct != null) {
-    return [marker(markerValue.xPct, markerValue.yPct)];
-  }
-
-  return [];
+  if (!Number.isFinite(xPct) || !Number.isFinite(yPct)) return null;
+  return marker(xPct, yPct);
 }

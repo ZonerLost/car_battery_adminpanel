@@ -6,6 +6,7 @@ import StatusPill from "../shared/StatusPill";
 import IconButton from "../shared/IconButton";
 import Button from "../shared/Button";
 import { FiEdit2, FiTrash2 } from "react-icons/fi";
+import { PiBatteryChargingBold } from "react-icons/pi";
 
 const missingValue = "--";
 
@@ -26,13 +27,14 @@ const formatYearRange = (row) => {
   return missingValue;
 };
 
-const getDiagramStatus = (row) => row.diagramStatus || (row.diagramUrl ? "uploaded" : "missing");
+const getDiagramStatus = (row) => row.diagramStatus || (row.diagramUrl ? "uploaded" : "template");
 
 const DiagramOverviewTable = ({
   diagrams,
   loading,
   onAddDiagram,
   onEditDiagram,
+  onAssignMarker,
   onDeleteDiagram,
 }) => {
   const [search, setSearch] = useState("");
@@ -61,6 +63,7 @@ const DiagramOverviewTable = ({
     const status = getDiagramStatus(row);
     if (status === "uploaded") return <StatusPill status="success" label="Uploaded" />;
     if (status === "pending") return <StatusPill status="pending" label="Pending" />;
+    if (status === "template") return <StatusPill status="neutral" label="Template" />;
     return <StatusPill status="missing" label="Missing" />;
   };
 
@@ -84,6 +87,10 @@ const DiagramOverviewTable = ({
         <div className="flex items-center gap-1">
           <IconButton size="sm" onClick={() => onEditDiagram(row)}>
             <FiEdit2 className="text-[13px]" />
+          </IconButton>
+
+          <IconButton size="sm" onClick={() => onAssignMarker(row)} title="Assign Marker">
+            <PiBatteryChargingBold className="text-[14px]" />
           </IconButton>
 
           <IconButton size="sm" variant="danger" onClick={() => onDeleteDiagram(row)}>
@@ -115,6 +122,7 @@ const DiagramOverviewTable = ({
             >
               <option value="all">Status</option>
               <option value="uploaded">Uploaded</option>
+              <option value="template">Template</option>
               <option value="pending">Pending</option>
               <option value="missing">Missing</option>
             </select>

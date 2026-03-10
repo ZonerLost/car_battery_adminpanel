@@ -2,6 +2,7 @@
 import {
   addDoc,
   collection,
+  deleteField,
   deleteDoc,
   doc,
   getDoc,
@@ -214,9 +215,10 @@ export async function deleteCarDiagramForReport({ carId }) {
   await updateDoc(carRef(carId), {
     diagramUrl: null,
     diagramStoragePath: null,
-    diagramStatus: "missing",
+    diagramStatus: car.templateId ? "template" : "missing",
     marker: null,
     markerStatus: "not-assigned",
+    markers: deleteField(),
     updatedAt: serverTimestamp(),
   });
 }
