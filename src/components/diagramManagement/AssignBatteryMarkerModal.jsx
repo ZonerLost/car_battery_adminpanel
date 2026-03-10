@@ -7,7 +7,14 @@ import { normalizeMarker } from "../../utils/batteryMarkerResolver";
 
 const DEFAULT_MARKER = { xPct: 50, yPct: 35 };
 
-const AssignBatteryMarkerModal = ({ isOpen, diagram, onClose, onSave }) => {
+const AssignBatteryMarkerModal = ({
+  isOpen,
+  diagram,
+  onClose,
+  onSave,
+  isSaving = false,
+  saveError = "",
+}) => {
   const [markerValue, setMarkerValue] = useState(DEFAULT_MARKER);
 
   useEffect(() => {
@@ -21,27 +28,42 @@ const AssignBatteryMarkerModal = ({ isOpen, diagram, onClose, onSave }) => {
     return diagram.yearFrom || "--";
   }, [diagram]);
 
-  const handleSave = () => {
-    if (!diagram?.id) return;
-    onSave?.(diagram.id, markerValue);
+  const handleMarkerChange = (nextValue) => {
+    if (isSaving) return;
+    setMarkerValue(nextValue);
+  };
+
+  const handleSave = async () => {
+    if (!diagram?.id || isSaving) return;
+    await onSave?.(diagram.id, markerValue);
   };
 
   if (!diagram) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Assign Battery Marker" size="md">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Assign Battery Marker"
+      size="md"
+      closeDisabled={isSaving}
+    >
       <div className="space-y-4">
         <div className="text-center text-xs font-semibold text-slate-800">
           {diagram.make} {diagram.model}
           <div className="text-[11px] text-slate-500">{yearLabel}</div>
         </div>
 
-        <div className="mx-auto w-full max-w-xs rounded-lg border border-slate-300 bg-slate-100 p-4">
+        <div
+          className={`mx-auto w-full max-w-xs rounded-lg border border-slate-300 bg-slate-100 p-4 ${
+            isSaving ? "pointer-events-none opacity-70" : ""
+          }`}
+        >
           <VehicleBatteryDiagramPicker
             templateId={diagram.templateId}
             diagramUrl={diagram.diagramUrl}
             value={markerValue}
-            onChange={setMarkerValue}
+            onChange={handleMarkerChange}
             className="mx-auto w-full"
           />
         </div>
@@ -56,13 +78,22 @@ const AssignBatteryMarkerModal = ({ isOpen, diagram, onClose, onSave }) => {
         </p>
 
         <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-          <Button type="button" variant="secondary" fullWidth onClick={onClose}>
+          <Button type="button" variant="secondary" fullWidth onClick={onClose} disabled={isSaving}>
             Close
           </Button>
-          <Button type="button" fullWidth onClick={handleSave}>
-            Save Changes
+          <Button
+            type="button"
+            fullWidth
+            onClick={handleSave}
+            isLoading={isSaving}
+            loadingText="Saving..."
+            disabled={isSaving}
+          >
+            Save Marker
           </Button>
         </div>
+
+        {saveError ? <div className="text-xs text-red-600">{saveError}</div> : null}
       </div>
     </Modal>
   );

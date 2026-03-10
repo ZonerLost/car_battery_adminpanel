@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import TableToolbar from "../shared/TableToolbar";
 import DataTable from "../shared/DataTable";
 import StatusPill from "../shared/StatusPill";
@@ -35,6 +35,7 @@ const CarOverviewTable = ({
   onToggleStatus,
   onDeleteCar,
   onAssignMarker,
+  pendingRowAction = null,
 }) => {
   const [showYearFilter, setShowYearFilter] = useState(false);
   const [searchValue, setSearchValue] = useState(filters.search || "");
@@ -76,6 +77,22 @@ const CarOverviewTable = ({
     setShowYearFilter(false);
   };
 
+  const getRowActionState = useCallback((rowId) => {
+    if (!pendingRowAction?.carId || pendingRowAction.carId !== rowId) {
+      return { isPending: false, isDeletePending: false, isStatusPending: false };
+    }
+
+    const isDeletePending = pendingRowAction.type === "delete";
+    const isStatusPending =
+      pendingRowAction.type === "activate" || pendingRowAction.type === "deactivate";
+
+    return {
+      isPending: true,
+      isDeletePending,
+      isStatusPending,
+    };
+  }, [pendingRowAction]);
+
   const columns = useMemo(
     () => [
       { key: "make", label: "Make" },
@@ -115,37 +132,74 @@ const CarOverviewTable = ({
       {
         key: "status",
         label: "Status",
-        render: (row) => (
-          <button type="button" onClick={() => onToggleStatus(row)} className="inline-flex items-center">
-            {row.status === "active" ? (
-              <StatusPill status="active" label="Active" />
-            ) : (
-              <StatusPill status="inactive" label="Inactive" />
-            )}
-          </button>
-        ),
+        render: (row) => {
+          const { isStatusPending } = getRowActionState(row.id);
+          return (
+            <button
+              type="button"
+              onClick={() => onToggleStatus(row)}
+              disabled={isStatusPending}
+              className="inline-flex items-center gap-2 disabled:cursor-not-allowed"
+            >
+              {isStatusPending ? (
+                <span
+                  className="inline-block h-3.5 w-3.5 rounded-full border-2 border-slate-400 border-t-transparent animate-spin"
+                  aria-hidden
+                />
+              ) : null}
+              {row.status === "active" ? (
+                <StatusPill
+                  status="active"
+                  label="Active"
+                  className={isStatusPending ? "opacity-70" : ""}
+                />
+              ) : (
+                <StatusPill
+                  status="inactive"
+                  label="Inactive"
+                  className={isStatusPending ? "opacity-70" : ""}
+                />
+              )}
+            </button>
+          );
+        },
       },
       {
         key: "actions",
         label: "Actions",
-        render: (row) => (
-          <div className="flex items-center gap-1">
-            <IconButton size="sm" onClick={() => onEditCar(row)}>
-              <FiEdit2 className="text-[13px]" />
-            </IconButton>
+        render: (row) => {
+          const { isPending, isDeletePending } = getRowActionState(row.id);
+          return (
+            <div className="flex items-center gap-1">
+              <IconButton size="sm" onClick={() => onEditCar(row)} disabled={isPending}>
+                <FiEdit2 className="text-[13px]" />
+              </IconButton>
 
-            <IconButton size="sm" onClick={() => onAssignMarker(row)} title="Assign Marker">
-              <PiBatteryChargingBold className="text-[14px]" />
-            </IconButton>
+              <IconButton
+                size="sm"
+                onClick={() => onAssignMarker(row)}
+                title="Assign Marker"
+                disabled={isPending}
+              >
+                <PiBatteryChargingBold className="text-[14px]" />
+              </IconButton>
 
-            <IconButton size="sm" variant="danger" onClick={() => onDeleteCar(row)}>
-              <FiTrash2 className="text-[13px]" />
-            </IconButton>
-          </div>
-        ),
+              <IconButton
+                size="sm"
+                variant="danger"
+                onClick={() => onDeleteCar(row)}
+                isLoading={isDeletePending}
+                loadingText={null}
+                disabled={isPending}
+              >
+                <FiTrash2 className="text-[13px]" />
+              </IconButton>
+            </div>
+          );
+        },
       },
     ],
-    [onAssignMarker, onDeleteCar, onEditCar, onToggleStatus]
+    [getRowActionState, onAssignMarker, onDeleteCar, onEditCar, onToggleStatus]
   );
 
   return (

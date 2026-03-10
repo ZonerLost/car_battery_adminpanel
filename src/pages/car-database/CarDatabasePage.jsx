@@ -23,6 +23,8 @@ import {
 } from "../../api/CarDatabase/CarDatabase.helper";
 import { getOverviewStats, subscribeOverviewStats } from "../../api/stats/overviewStats.helper";
 import { getCarDatabaseCounts } from "../../api/stats/carDatabaseCounts.helper";
+import useAsyncAction from "../../hooks/useAsyncAction";
+import { getErrorMessage } from "../../utils/errorMessage";
 
 const RANGE_ORDER = ["thisMonth", "last90", "all"];
 const RANGE_LABELS = { thisMonth: "This Month", last90: "Last 90 Days", all: "All Time" };
@@ -67,16 +69,59 @@ const CarDatabasePage = () => {
   const [entryModalState, setEntryModalState] = useState({ open: false, mode: "add", car: null });
   const [markerModalState, setMarkerModalState] = useState({ open: false, car: null });
   const [confirmState, setConfirmState] = useState({ open: false, type: null, car: null });
+  const [entrySubmitError, setEntrySubmitError] = useState("");
+  const [markerSubmitError, setMarkerSubmitError] = useState("");
+  const [confirmError, setConfirmError] = useState("");
+  const { run, isPending } = useAsyncAction();
 
-  const openAddModal = () => setEntryModalState({ open: true, mode: "add", car: null });
-  const openEditModal = (car) => setEntryModalState({ open: true, mode: "edit", car });
-  const closeEntryModal = () => setEntryModalState({ open: false, mode: "add", car: null });
+  const entryActionKey =
+    entryModalState.mode === "edit" && entryModalState.car?.id
+      ? `car-entry:update:${entryModalState.car.id}`
+      : "car-entry:create";
+  const markerActionKey = markerModalState.car?.id
+    ? `car-marker:${markerModalState.car.id}`
+    : "car-marker";
+  const confirmActionKey =
+    confirmState.car?.id && confirmState.type
+      ? `car-confirm:${confirmState.type}:${confirmState.car.id}`
+      : null;
+  const pendingRowAction = isPending(confirmActionKey)
+    ? { carId: confirmState.car?.id, type: confirmState.type }
+    : null;
 
-  const openMarkerModal = (car) => setMarkerModalState({ open: true, car });
-  const closeMarkerModal = () => setMarkerModalState({ open: false, car: null });
+  const openAddModal = () => {
+    setEntrySubmitError("");
+    setEntryModalState({ open: true, mode: "add", car: null });
+  };
+  const openEditModal = (car) => {
+    setEntrySubmitError("");
+    setEntryModalState({ open: true, mode: "edit", car });
+  };
+  const closeEntryModal = () => {
+    if (isPending(entryActionKey)) return;
+    setEntrySubmitError("");
+    setEntryModalState({ open: false, mode: "add", car: null });
+  };
 
-  const openConfirm = (type, car) => setConfirmState({ open: true, type, car });
-  const closeConfirm = () => setConfirmState({ open: false, type: null, car: null });
+  const openMarkerModal = (car) => {
+    setMarkerSubmitError("");
+    setMarkerModalState({ open: true, car });
+  };
+  const closeMarkerModal = () => {
+    if (isPending(markerActionKey)) return;
+    setMarkerSubmitError("");
+    setMarkerModalState({ open: false, car: null });
+  };
+
+  const openConfirm = (type, car) => {
+    setConfirmError("");
+    setConfirmState({ open: true, type, car });
+  };
+  const closeConfirm = () => {
+    if (isPending(confirmActionKey)) return;
+    setConfirmError("");
+    setConfirmState({ open: false, type: null, car: null });
+  };
 
   const handleFilterChange = useCallback((patch) => {
     setFilters((prev) => ({ ...prev, ...patch }));
@@ -203,54 +248,125 @@ const CarDatabasePage = () => {
   }, [counts, overviewStats?.pendingReports, rangeLabel]);
 
   const handleSaveCar = async (values, files) => {
-    try {
-      if (entryModalState.mode === "add") {
+    if (isPending(entryActionKey)) return;
+
+    setEntrySubmitError("");
+
+    const isEdit = entryModalState.mode === "edit" && entryModalState.car?.id;
+    const hasDiagramUpload = Boolean(files?.diagramFile);
+    const successMessage = isEdit
+      ? hasDiagramUpload
+        ? "Diagram updated successfully"
+        : "Car updated successfully"
+      : "Car added successfully";
+    const fallbackError = isEdit
+      ? hasDiagramUpload
+        ? "Failed to update diagram"
+        : "Failed to update car"
+      : "Failed to add car";
+
+    const result = await run(entryActionKey, async () => {
+      if (!isEdit) {
         const carId = await createCarEntry(values, files);
-        closeEntryModal();
+        let createdCar = null;
 
-        // after creating, open marker modal to set location
-        const created = await getCarEntry(carId);
-        if (created) openMarkerModal(created);
+        try {
+          createdCar = await getCarEntry(carId);
+        } catch (lookupError) {
+          console.warn("[car-db] created car lookup failed", lookupError);
+        }
 
-        await loadPage(1);
-      } else if (entryModalState.mode === "edit" && entryModalState.car?.id) {
-        await updateCarEntry(entryModalState.car.id, values, files);
-        closeEntryModal();
-        await loadPage(1);
+        return { createdCar };
       }
-    } catch (e) {
-      console.error(e);
+
+      await updateCarEntry(entryModalState.car.id, values, files);
+      return null;
+    });
+
+    if (result.skipped) return;
+
+    if (!result.ok) {
+      const message = getErrorMessage(result.error, fallbackError);
+      setEntrySubmitError(message);
+      toast.error(message, { id: "car-entry-submit" });
+      return;
     }
+
+    closeEntryModal();
+    toast.success(successMessage, { id: "car-entry-submit" });
+    if (!isEdit && result.result?.createdCar) {
+      openMarkerModal(result.result.createdCar);
+    }
+    await loadPage(1);
   };
 
   const handleSaveMarker = async (carId, markerPosition) => {
-    try {
+    const actionKey = `car-marker:${carId}`;
+    if (isPending(actionKey)) return;
+
+    setMarkerSubmitError("");
+
+    const result = await run(actionKey, async () => {
       await saveMarker(carId, markerPosition);
-      closeMarkerModal();
-      await loadPage(1);
-    } catch (e) {
-      console.error(e);
+    });
+
+    if (result.skipped) return;
+
+    if (!result.ok) {
+      const message = getErrorMessage(result.error, "Failed to save marker");
+      setMarkerSubmitError(message);
+      toast.error(message, { id: "car-marker-save" });
+      return;
     }
+
+    closeMarkerModal();
+    toast.success("Battery marker saved successfully", { id: "car-marker-save" });
+    await loadPage(1);
   };
 
   const handleConfirmAction = async () => {
     const { type, car } = confirmState;
     if (!car?.id) return;
 
-    try {
-      if (type === "delete") {
-        await deleteCarEntry(car.id);
-      } else if (type === "activate") {
-        await setCarActive(car.id, true);
-      } else if (type === "deactivate") {
-        await setCarActive(car.id, false);
-      }
+    const actionKey = `car-confirm:${type}:${car.id}`;
+    if (isPending(actionKey)) return;
 
-      closeConfirm();
-      await loadPage(1);
-    } catch (e) {
-      console.error(e);
+    setConfirmError("");
+
+    const actionConfig = {
+      delete: {
+        successMessage: "Car deleted successfully",
+        fallbackError: "Failed to delete car",
+        runAction: () => deleteCarEntry(car.id),
+      },
+      activate: {
+        successMessage: "Car activated successfully",
+        fallbackError: "Failed to update car status",
+        runAction: () => setCarActive(car.id, true),
+      },
+      deactivate: {
+        successMessage: "Car deactivated successfully",
+        fallbackError: "Failed to update car status",
+        runAction: () => setCarActive(car.id, false),
+      },
+    }[type];
+
+    if (!actionConfig) return;
+
+    const result = await run(actionKey, actionConfig.runAction);
+
+    if (result.skipped) return;
+
+    if (!result.ok) {
+      const message = getErrorMessage(result.error, actionConfig.fallbackError);
+      setConfirmError(message);
+      toast.error(message, { id: "car-confirm-action" });
+      return;
     }
+
+    closeConfirm();
+    toast.success(actionConfig.successMessage, { id: "car-confirm-action" });
+    await loadPage(1);
   };
 
   const confirmConfig = (() => {
@@ -338,6 +454,7 @@ const CarDatabasePage = () => {
             onAssignMarker={openMarkerModal}
             onToggleStatus={(car) => openConfirm(car.status === "active" ? "deactivate" : "activate", car)}
             onDeleteCar={(car) => openConfirm("delete", car)}
+            pendingRowAction={pendingRowAction}
           />
         </SectionCard>
       </PageContainer>
@@ -348,6 +465,8 @@ const CarDatabasePage = () => {
         initialValues={entryModalState.car}
         onClose={closeEntryModal}
         onSubmit={handleSaveCar}
+        isSubmitting={isPending(entryActionKey)}
+        submitError={entrySubmitError}
       />
 
       <AssignBatteryMarkerModal
@@ -355,6 +474,8 @@ const CarDatabasePage = () => {
         diagram={markerModalState.car}
         onClose={closeMarkerModal}
         onSave={handleSaveMarker}
+        isSaving={isPending(markerActionKey)}
+        saveError={markerSubmitError}
       />
 
       {confirmConfig && (
@@ -367,6 +488,9 @@ const CarDatabasePage = () => {
           confirmLabel={confirmConfig.confirmLabel}
           cancelLabel={confirmConfig.cancelLabel}
           variant={confirmConfig.variant}
+          loading={isPending(confirmActionKey)}
+          loadingLabel={confirmState.type === "delete" ? "Deleting..." : "Updating..."}
+          errorText={confirmError}
         />
       )}
     </>

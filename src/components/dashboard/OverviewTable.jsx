@@ -14,7 +14,15 @@ const DEFAULT_FILTERS = {
   yearRange: "all",
 };
 
-const OverviewTable = ({ rows = [], loading = false, filters, onFiltersChange, onDeleteRow, onEditRow }) => {
+const OverviewTable = ({
+  rows = [],
+  loading = false,
+  filters,
+  onFiltersChange,
+  onDeleteRow,
+  onEditRow,
+  pendingDeleteId = null,
+}) => {
   const [localFilters, setLocalFilters] = useState(DEFAULT_FILTERS);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
@@ -119,6 +127,9 @@ const OverviewTable = ({ rows = [], loading = false, filters, onFiltersChange, o
               size="sm"
               variant="danger"
               onClick={() => onDeleteRow?.(row)}
+              disabled={pendingDeleteId === row.id}
+              isLoading={pendingDeleteId === row.id}
+              loadingText={null}
               aria-label="Delete"
             >
               <FiTrash2 className="text-[13px]" />

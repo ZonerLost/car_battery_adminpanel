@@ -1,7 +1,6 @@
 import React from "react";
 import Modal from "./Modal";
 import Button from "./Button";
-import Alert from "./Alert";
 
 const ConfirmDialog = ({
   isOpen,
@@ -17,7 +16,6 @@ const ConfirmDialog = ({
   errorText = "",
 }) => {
   const isDanger = variant === "danger";
-  const confirmText = loading ? loadingLabel || confirmLabel : confirmLabel;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} size="sm" closeDisabled={loading}>
@@ -40,9 +38,10 @@ const ConfirmDialog = ({
           size="sm"
           onClick={loading ? undefined : onConfirm}
           isLoading={loading}
+          loadingText={loadingLabel || confirmLabel}
           disabled={loading}
         >
-          {confirmText}
+          {confirmLabel}
         </Button>
       </div>
     </Modal>

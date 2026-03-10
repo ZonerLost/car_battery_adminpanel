@@ -35,7 +35,15 @@ function buildFormValues(mode, initialValues) {
   return { ...EMPTY_VALUES };
 }
 
-const CarEntryModal = ({ isOpen, mode = "add", initialValues, onClose, onSubmit }) => {
+const CarEntryModal = ({
+  isOpen,
+  mode = "add",
+  initialValues,
+  onClose,
+  onSubmit,
+  isSubmitting = false,
+  submitError = "",
+}) => {
   const [values, setValues] = useState(() => buildFormValues(mode, initialValues));
 
   const [thumbnailFile, setThumbnailFile] = useState(null);
@@ -67,8 +75,9 @@ const CarEntryModal = ({ isOpen, mode = "add", initialValues, onClose, onSubmit 
     setValues((p) => ({ ...p, [name]: value }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
 
     const payload = {
       ...(initialValues || {}),
@@ -78,23 +87,66 @@ const CarEntryModal = ({ isOpen, mode = "add", initialValues, onClose, onSubmit 
       templateId: inferTemplateId(values.bodyType),
     };
 
-    onSubmit(payload, { thumbnailFile, diagramFile });
+    await onSubmit?.(payload, { thumbnailFile, diagramFile });
   };
 
   const title = mode === "edit" ? "Edit Car Entry" : "Add New Car Entry";
   const primaryLabel = mode === "edit" ? "Save Changes" : "Add Car";
+  const submitLoadingLabel =
+    mode === "edit"
+      ? diagramFile
+        ? "Uploading..."
+        : "Updating..."
+      : "Saving...";
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={title} size="lg" className="hide-scrollbar">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={title}
+      size="lg"
+      className="hide-scrollbar"
+      closeDisabled={isSubmitting}
+    >
       <form onSubmit={handleSubmit} className="space-y-4">
         <FormRow className="md:grid-cols-2 gap-4">
-          <TextField label="Car Make" name="make" value={values.make} onChange={handleChange} placeholder="e.g., Toyota" />
-          <TextField label="Car Model" name="model" value={values.model} onChange={handleChange} placeholder="e.g., Corolla" />
+          <TextField
+            label="Car Make"
+            name="make"
+            value={values.make}
+            onChange={handleChange}
+            placeholder="e.g., Toyota"
+            disabled={isSubmitting}
+          />
+          <TextField
+            label="Car Model"
+            name="model"
+            value={values.model}
+            onChange={handleChange}
+            placeholder="e.g., Corolla"
+            disabled={isSubmitting}
+          />
         </FormRow>
 
         <FormRow className="md:grid-cols-2 gap-4">
-          <TextField label="Year From" name="yearFrom" type="number" value={values.yearFrom} onChange={handleChange} placeholder="e.g., 2015" />
-          <TextField label="Year To" name="yearTo" type="number" value={values.yearTo} onChange={handleChange} placeholder="e.g., 2020 (optional)" />
+          <TextField
+            label="Year From"
+            name="yearFrom"
+            type="number"
+            value={values.yearFrom}
+            onChange={handleChange}
+            placeholder="e.g., 2015"
+            disabled={isSubmitting}
+          />
+          <TextField
+            label="Year To"
+            name="yearTo"
+            type="number"
+            value={values.yearTo}
+            onChange={handleChange}
+            placeholder="e.g., 2020 (optional)"
+            disabled={isSubmitting}
+          />
         </FormRow>
 
         <FormRow className="md:grid-cols-2 gap-4">
@@ -103,6 +155,7 @@ const CarEntryModal = ({ isOpen, mode = "add", initialValues, onClose, onSubmit 
             name="bodyType"
             value={values.bodyType}
             onChange={handleChange}
+            disabled={isSubmitting}
             options={[
               { label: "Sedan", value: "Sedan" },
               { label: "SUV", value: "SUV" },
@@ -117,6 +170,7 @@ const CarEntryModal = ({ isOpen, mode = "add", initialValues, onClose, onSubmit 
             name="status"
             value={values.status}
             onChange={handleChange}
+            disabled={isSubmitting}
             options={[
               { label: "Active", value: "active" },
               { label: "Inactive", value: "inactive" },
@@ -125,7 +179,14 @@ const CarEntryModal = ({ isOpen, mode = "add", initialValues, onClose, onSubmit 
           />
         </FormRow>
 
-        <TextField label="Car Location" name="location" value={values.location} onChange={handleChange} placeholder="e.g., Pakistan" />
+        <TextField
+          label="Car Location"
+          name="location"
+          value={values.location}
+          onChange={handleChange}
+          placeholder="e.g., Pakistan"
+          disabled={isSubmitting}
+        />
 
         <TextAreaField
           label="Battery Location Description"
@@ -134,6 +195,7 @@ const CarEntryModal = ({ isOpen, mode = "add", initialValues, onClose, onSubmit 
           onChange={handleChange}
           placeholder="Engine bay - right side near fuse box"
           rows={4}
+          disabled={isSubmitting}
         />
 
         {/* Thumbnail upload */}
@@ -151,12 +213,17 @@ const CarEntryModal = ({ isOpen, mode = "add", initialValues, onClose, onSubmit 
               </div>
             ) : null}
 
-            <label className="w-12 h-12 flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white cursor-pointer text-xl text-slate-400">
+            <label
+              className={`w-12 h-12 flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-xl text-slate-400 ${
+                isSubmitting ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+              }`}
+            >
               +
               <input
                 type="file"
                 className="hidden"
                 accept=".png,.jpg,.jpeg,.webp"
+                disabled={isSubmitting}
                 onChange={(e) => setThumbnailFile(e.target.files?.[0] || null)}
               />
             </label>
@@ -203,12 +270,17 @@ const CarEntryModal = ({ isOpen, mode = "add", initialValues, onClose, onSubmit 
                       </div>
                     ) : null}
 
-                    <label className="w-12 h-12 flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white cursor-pointer text-xl text-slate-400">
+                    <label
+                      className={`w-12 h-12 flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-xl text-slate-400 ${
+                        isSubmitting ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                      }`}
+                    >
                       +
                       <input
                         type="file"
                         className="hidden"
                         accept=".png,.jpg,.jpeg,.svg,.webp"
+                        disabled={isSubmitting}
                         onChange={(e) => setDiagramFile(e.target.files?.[0] || null)}
                       />
                     </label>
@@ -226,13 +298,21 @@ const CarEntryModal = ({ isOpen, mode = "add", initialValues, onClose, onSubmit 
         </div>
 
         <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-between">
-          <Button type="button" variant="secondary" fullWidth onClick={onClose}>
+          <Button type="button" variant="secondary" fullWidth onClick={onClose} disabled={isSubmitting}>
             {mode === "edit" ? "Close" : "Cancel"}
           </Button>
-          <Button type="submit" fullWidth>
+          <Button
+            type="submit"
+            fullWidth
+            isLoading={isSubmitting}
+            loadingText={submitLoadingLabel}
+            disabled={isSubmitting}
+          >
             {primaryLabel}
           </Button>
         </div>
+
+        {submitError ? <div className="text-xs text-red-600">{submitError}</div> : null}
       </form>
     </Modal>
   );

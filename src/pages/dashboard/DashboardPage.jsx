@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import toast from "react-hot-toast";
 import PageContainer from "../../components/shared/PageContainer";
 import DashboardMetrics from "../../components/dashboard/DashboardMetrics";
 import SectionCard from "../../components/shared/SectionCard";
@@ -17,6 +18,8 @@ import {
   buildOverviewRows,
 } from "../../lib/dashboard/aggregateDashboard";
 import { deleteCarEntry } from "../../api/shared/carEntries.helper";
+import useAsyncAction from "../../hooks/useAsyncAction";
+import { getErrorMessage } from "../../utils/errorMessage";
 
 const RangeSelect = ({ value, onChange, options }) => (
   <select
@@ -39,25 +42,45 @@ const DashboardPage = () => {
   const [reportsRange, setReportsRange] = useState("thisYear");
 
   const [confirmState, setConfirmState] = useState({ open: false, row: null });
+  const [confirmError, setConfirmError] = useState("");
+  const { run, isPending } = useAsyncAction();
 
   const metrics = useMemo(() => buildDashboardMetrics(cars, reports, counts), [cars, reports, counts]);
   const coverageData = useMemo(() => buildCoverageByType(cars, coverageRange), [cars, coverageRange]);
   const reportsTrend = useMemo(() => buildMonthlyReportsTrend(reports, reportsRange), [reports, reportsRange]);
   const tableRows = useMemo(() => buildOverviewRows(cars), [cars]);
+  const confirmActionKey = confirmState.row?.id ? `dashboard-delete:${confirmState.row.id}` : null;
+  const pendingDeleteId = isPending(confirmActionKey) ? confirmState.row?.id : null;
 
-  const openDeleteConfirm = (row) => setConfirmState({ open: true, row });
-  const closeDeleteConfirm = () => setConfirmState({ open: false, row: null });
+  const openDeleteConfirm = (row) => {
+    setConfirmError("");
+    setConfirmState({ open: true, row });
+  };
+  const closeDeleteConfirm = () => {
+    if (isPending(confirmActionKey)) return;
+    setConfirmError("");
+    setConfirmState({ open: false, row: null });
+  };
 
   const handleDeleteRow = async () => {
     if (!confirmState.row?.id) return;
-    try {
+
+    const result = await run(confirmActionKey, async () => {
       await deleteCarEntry(confirmState.row.id);
-      await refresh();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      closeDeleteConfirm();
+    });
+
+    if (result.skipped) return;
+
+    if (!result.ok) {
+      const message = getErrorMessage(result.error, "Failed to delete car");
+      setConfirmError(message);
+      toast.error(message, { id: "dashboard-delete-car" });
+      return;
     }
+
+    closeDeleteConfirm();
+    toast.success("Car deleted successfully", { id: "dashboard-delete-car" });
+    await refresh();
   };
 
   return (
@@ -82,7 +105,12 @@ const DashboardPage = () => {
         </div>
 
         <SectionCard title="Overview" className="mt-5">
-          <OverviewTable rows={tableRows} loading={loading} onDeleteRow={openDeleteConfirm} />
+          <OverviewTable
+            rows={tableRows}
+            loading={loading}
+            onDeleteRow={openDeleteConfirm}
+            pendingDeleteId={pendingDeleteId}
+          />
         </SectionCard>
       </PageContainer>
 
@@ -95,6 +123,9 @@ const DashboardPage = () => {
         confirmLabel="Delete"
         cancelLabel="Cancel"
         variant="danger"
+        loading={isPending(confirmActionKey)}
+        loadingLabel="Deleting..."
+        errorText={confirmError}
       />
     </>
   );

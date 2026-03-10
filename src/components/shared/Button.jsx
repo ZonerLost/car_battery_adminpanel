@@ -30,16 +30,19 @@ const Button = ({
   iconLeft,
   iconRight,
   isLoading = false,
+  loadingText,
   className,
   disabled,
   ...props
 }) => {
   const effectiveDisabled = disabled || isLoading;
+  const shouldOverlayLoading = isLoading && loadingText !== undefined;
+  const showLoadingText = Boolean(loadingText);
 
   return (
     <button
       className={classNames(
-        "inline-flex items-center justify-center gap-2 font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#e53535]",
+        "relative inline-flex items-center justify-center gap-2 font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#e53535]",
         variantClasses[variant],
         sizeClasses[size],
         fullWidth && "w-full",
@@ -50,15 +53,32 @@ const Button = ({
       aria-disabled={effectiveDisabled}
       {...props}
     >
-      {iconLeft && <span className="shrink-0">{iconLeft}</span>}
-      {isLoading && (
-        <span
-          className="inline-block h-4 w-4 rounded-full border-2 border-current border-t-transparent opacity-70 animate-spin"
-          aria-hidden
-        />
-      )}
-      <span>{children}</span>
-      {iconRight && <span className="shrink-0">{iconRight}</span>}
+      <span
+        className={classNames(
+          "inline-flex items-center justify-center gap-2",
+          shouldOverlayLoading && "opacity-0"
+        )}
+      >
+        {iconLeft && <span className="shrink-0">{iconLeft}</span>}
+        {!shouldOverlayLoading && isLoading && (
+          <span
+            className="inline-block h-4 w-4 rounded-full border-2 border-current border-t-transparent opacity-70 animate-spin"
+            aria-hidden
+          />
+        )}
+        <span>{children}</span>
+        {iconRight && <span className="shrink-0">{iconRight}</span>}
+      </span>
+
+      {shouldOverlayLoading ? (
+        <span className="absolute inset-0 inline-flex items-center justify-center gap-2">
+          <span
+            className="inline-block h-4 w-4 rounded-full border-2 border-current border-t-transparent opacity-70 animate-spin"
+            aria-hidden
+          />
+          {showLoadingText ? <span>{loadingText}</span> : null}
+        </span>
+      ) : null}
     </button>
   );
 };

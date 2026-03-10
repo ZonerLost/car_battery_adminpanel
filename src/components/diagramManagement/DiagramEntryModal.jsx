@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import React, { useEffect, useMemo, useState } from "react";
 import Modal from "../shared/Modal";
 import FormRow from "../shared/FormRow";
@@ -5,7 +6,6 @@ import TextField from "../shared/TextField";
 import TextAreaField from "../shared/TextAreaField";
 import SelectField from "../shared/SelectField";
 import Button from "../shared/Button";
-import toast from "react-hot-toast";
 
 import { getTemplate, inferTemplateId } from "../../config/vehicleTemplates";
 
@@ -43,20 +43,18 @@ const DiagramEntryModal = ({
   initialValues,
   onClose,
   onSubmit,
+  isSubmitting = false,
+  submitError = "",
 }) => {
   const [values, setValues] = useState(() => buildFormValues(mode, initialValues));
   const [diagramFile, setDiagramFile] = useState(null);
   const [thumbnailFile, setThumbnailFile] = useState(null);
-  const [submitError, setSubmitError] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     setValues(buildFormValues(mode, initialValues));
     setDiagramFile(null);
     setThumbnailFile(null);
-    setSubmitError("");
-    setIsSubmitting(false);
   }, [isOpen, mode, initialValues]);
 
   const handleChange = (event) => {
@@ -99,43 +97,25 @@ const DiagramEntryModal = ({
     event.preventDefault();
     if (isSubmitting) return;
 
-    setSubmitError("");
-    setIsSubmitting(true);
+    const payload = {
+      ...(initialValues || {}),
+      ...values,
+      templateId: computedTemplateId,
+      yearFrom: values.yearFrom ? Number(values.yearFrom) : undefined,
+      yearTo: values.yearTo ? Number(values.yearTo) : undefined,
+    };
 
-    const toastId = `car-entry-${mode}`;
-
-    try {
-      const payload = {
-        ...(initialValues || {}),
-        ...values,
-        templateId: computedTemplateId,
-        yearFrom: values.yearFrom ? Number(values.yearFrom) : undefined,
-        yearTo: values.yearTo ? Number(values.yearTo) : undefined,
-      };
-
-      await onSubmit?.(payload, { diagramFile, thumbnailFile });
-      toast.success(mode === "edit" ? "Changes saved successfully" : "Car added successfully", {
-        id: toastId,
-      });
-      onClose?.();
-    } catch (error) {
-      console.error(error);
-      const message =
-        error?.response?.data?.message ||
-        error?.response?.data?.error ||
-        (Array.isArray(error?.response?.data?.errors) ? error.response.data.errors[0] : null) ||
-        error?.message ||
-        "Failed to save car. Please try again.";
-
-      setSubmitError(message);
-      toast.error(message, { id: toastId });
-    } finally {
-      setIsSubmitting(false);
-    }
+    await onSubmit?.(payload, { diagramFile, thumbnailFile });
   };
 
   const title = mode === "edit" ? "Edit Car Entry" : "Add New Car Entry";
   const primaryLabel = mode === "edit" ? "Save Changes" : "Add Car";
+  const submitLoadingLabel =
+    mode === "edit"
+      ? diagramFile
+        ? "Uploading..."
+        : "Updating..."
+      : "Saving...";
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} size="lg" closeDisabled={isSubmitting}>
@@ -147,6 +127,7 @@ const DiagramEntryModal = ({
             value={values.make}
             onChange={handleChange}
             placeholder="e.g., Toyota"
+            disabled={isSubmitting}
           />
           <TextField
             label="Car Model"
@@ -154,6 +135,7 @@ const DiagramEntryModal = ({
             value={values.model}
             onChange={handleChange}
             placeholder="e.g., Corolla"
+            disabled={isSubmitting}
           />
         </FormRow>
 
@@ -165,6 +147,7 @@ const DiagramEntryModal = ({
             value={values.yearFrom}
             onChange={handleChange}
             placeholder="e.g., 2015"
+            disabled={isSubmitting}
           />
           <TextField
             label="Year To"
@@ -173,6 +156,7 @@ const DiagramEntryModal = ({
             value={values.yearTo}
             onChange={handleChange}
             placeholder="e.g., 2020 (optional)"
+            disabled={isSubmitting}
           />
         </FormRow>
 
@@ -182,6 +166,7 @@ const DiagramEntryModal = ({
             name="bodyType"
             value={values.bodyType}
             onChange={handleChange}
+            disabled={isSubmitting}
             options={[
               { label: "Sedan", value: "Sedan" },
               { label: "SUV", value: "SUV" },
@@ -196,6 +181,7 @@ const DiagramEntryModal = ({
             name="status"
             value={values.status}
             onChange={handleChange}
+            disabled={isSubmitting}
             options={[
               { label: "Active", value: "active" },
               { label: "Inactive", value: "inactive" },
@@ -210,6 +196,7 @@ const DiagramEntryModal = ({
           value={values.location}
           onChange={handleChange}
           placeholder="e.g., Pakistan"
+          disabled={isSubmitting}
         />
 
         <TextAreaField
@@ -219,6 +206,7 @@ const DiagramEntryModal = ({
           onChange={handleChange}
           placeholder="Engine bay - right side near fuse box"
           rows={4}
+          disabled={isSubmitting}
         />
 
         <div>
@@ -239,12 +227,17 @@ const DiagramEntryModal = ({
               </div>
             ) : null}
 
-            <label className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-xl text-slate-400">
+            <label
+              className={`flex h-12 w-12 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-xl text-slate-400 ${
+                isSubmitting ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+              }`}
+            >
               +
               <input
                 type="file"
                 className="hidden"
                 accept=".png,.jpg,.jpeg,.webp"
+                disabled={isSubmitting}
                 onChange={(event) => setThumbnailFile(event.target.files?.[0] || null)}
               />
             </label>
@@ -292,12 +285,17 @@ const DiagramEntryModal = ({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
-                  <label className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-xl text-slate-400">
+                  <label
+                    className={`flex h-12 w-12 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-xl text-slate-400 ${
+                      isSubmitting ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                    }`}
+                  >
                     +
                     <input
                       type="file"
                       className="hidden"
                       accept=".png,.jpg,.jpeg,.svg,.webp"
+                      disabled={isSubmitting}
                       onChange={(event) => setDiagramFile(event.target.files?.[0] || null)}
                     />
                   </label>
@@ -353,8 +351,14 @@ const DiagramEntryModal = ({
             {mode === "edit" ? "Close" : "Cancel"}
           </Button>
 
-          <Button type="submit" fullWidth isLoading={isSubmitting} disabled={isSubmitting}>
-            {isSubmitting ? (mode === "edit" ? "Saving..." : "Adding...") : primaryLabel}
+          <Button
+            type="submit"
+            fullWidth
+            isLoading={isSubmitting}
+            loadingText={submitLoadingLabel}
+            disabled={isSubmitting}
+          >
+            {primaryLabel}
           </Button>
         </div>
 

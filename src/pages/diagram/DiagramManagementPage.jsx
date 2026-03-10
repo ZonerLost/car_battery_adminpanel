@@ -16,6 +16,8 @@ import {
   deleteCarEntry,
   saveMarker,
 } from "../../api/DiagramManagement/DiagramManagement.helper";
+import useAsyncAction from "../../hooks/useAsyncAction";
+import { getErrorMessage } from "../../utils/errorMessage";
 
 const DiagramManagementPage = () => {
   const [diagrams, setDiagrams] = useState([]);
@@ -36,7 +38,20 @@ const DiagramManagementPage = () => {
     open: false,
     diagram: null,
   });
-  const [deleteStatus, setDeleteStatus] = useState({ loading: false, error: "" });
+  const [entrySubmitError, setEntrySubmitError] = useState("");
+  const [markerSubmitError, setMarkerSubmitError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const { run, isPending } = useAsyncAction();
+  const entryActionKey =
+    entryModalState.mode === "edit" && entryModalState.diagram?.id
+      ? `diagram-entry:update:${entryModalState.diagram.id}`
+      : "diagram-entry:create";
+  const markerActionKey = markerModalState.diagram?.id
+    ? `diagram-marker:${markerModalState.diagram.id}`
+    : "diagram-marker";
+  const deleteActionKey = confirmState.diagram?.id
+    ? `diagram-delete:${confirmState.diagram.id}`
+    : null;
 
   const load = async () => {
     setLoading(true);
@@ -54,70 +69,127 @@ const DiagramManagementPage = () => {
     load();
   }, []);
 
-  const openAddModal = () => setEntryModalState({ open: true, mode: "add", diagram: null });
-  const openEditModal = (diagram) => setEntryModalState({ open: true, mode: "edit", diagram });
-  const closeEntryModal = () => setEntryModalState({ open: false, mode: "add", diagram: null });
+  const openAddModal = () => {
+    setEntrySubmitError("");
+    setEntryModalState({ open: true, mode: "add", diagram: null });
+  };
+  const openEditModal = (diagram) => {
+    setEntrySubmitError("");
+    setEntryModalState({ open: true, mode: "edit", diagram });
+  };
+  const closeEntryModal = () => {
+    if (isPending(entryActionKey)) return;
+    setEntrySubmitError("");
+    setEntryModalState({ open: false, mode: "add", diagram: null });
+  };
 
-  const openMarkerModal = (diagram) => setMarkerModalState({ open: true, diagram });
-  const closeMarkerModal = () => setMarkerModalState({ open: false, diagram: null });
+  const openMarkerModal = (diagram) => {
+    setMarkerSubmitError("");
+    setMarkerModalState({ open: true, diagram });
+  };
+  const closeMarkerModal = () => {
+    if (isPending(markerActionKey)) return;
+    setMarkerSubmitError("");
+    setMarkerModalState({ open: false, diagram: null });
+  };
 
   const openDeleteConfirm = (diagram) => {
-    setDeleteStatus({ loading: false, error: "" });
+    setDeleteError("");
     setConfirmState({ open: true, diagram });
   };
   const closeDeleteConfirm = () => {
-    setDeleteStatus({ loading: false, error: "" });
+    if (isPending(deleteActionKey)) return;
+    setDeleteError("");
     setConfirmState({ open: false, diagram: null });
   };
 
   const handleSaveDiagram = async (values, files) => {
-    try {
-      if (entryModalState.mode === "add") {
+    if (isPending(entryActionKey)) return;
+
+    setEntrySubmitError("");
+
+    const isEdit = entryModalState.mode === "edit" && entryModalState.diagram?.id;
+    const hasDiagramUpload = Boolean(files?.diagramFile);
+    const successMessage = isEdit
+      ? hasDiagramUpload
+        ? "Diagram updated successfully"
+        : "Car updated successfully"
+      : "Car added successfully";
+    const fallbackError = isEdit
+      ? hasDiagramUpload
+        ? "Failed to update diagram"
+        : "Failed to update car"
+      : "Failed to add car";
+
+    const result = await run(entryActionKey, async () => {
+      if (!isEdit) {
         await createCarEntry(values, files);
-      } else if (entryModalState.mode === "edit" && entryModalState.diagram?.id) {
-        await updateCarEntry(entryModalState.diagram.id, values, files);
+        return;
       }
-      closeEntryModal();
-      await load();
-    } catch (e) {
-      console.error(e);
-      throw e;
+
+      await updateCarEntry(entryModalState.diagram.id, values, files);
+    });
+
+    if (result.skipped) return;
+
+    if (!result.ok) {
+      const message = getErrorMessage(result.error, fallbackError);
+      setEntrySubmitError(message);
+      toast.error(message, { id: "diagram-entry-submit" });
+      return;
     }
+
+    closeEntryModal();
+    toast.success(successMessage, { id: "diagram-entry-submit" });
+    await load();
   };
 
   const handleSaveMarker = async (diagramId, markerPosition) => {
-    try {
+    const actionKey = `diagram-marker:${diagramId}`;
+    if (isPending(actionKey)) return;
+
+    setMarkerSubmitError("");
+
+    const result = await run(actionKey, async () => {
       await saveMarker(diagramId, markerPosition);
-      closeMarkerModal();
-      await load();
-    } catch (e) {
-      console.error(e);
+    });
+
+    if (result.skipped) return;
+
+    if (!result.ok) {
+      const message = getErrorMessage(result.error, "Failed to save marker");
+      setMarkerSubmitError(message);
+      toast.error(message, { id: "diagram-marker-save" });
+      return;
     }
+
+    closeMarkerModal();
+    toast.success("Battery marker saved successfully", { id: "diagram-marker-save" });
+    await load();
   };
 
   const handleDeleteDiagram = async () => {
     if (!confirmState.diagram?.id) return;
-    if (deleteStatus.loading) return;
-    setDeleteStatus({ loading: true, error: "" });
-    const toastId = "diagram-delete";
-    try {
+    if (isPending(deleteActionKey)) return;
+
+    setDeleteError("");
+
+    const result = await run(deleteActionKey, async () => {
       await deleteCarEntry(confirmState.diagram.id);
-      closeDeleteConfirm();
-      toast.success("Diagram deleted successfully", { id: toastId });
-      await load();
-    } catch (e) {
-      console.error(e);
-      const msg =
-        e?.response?.data?.message ||
-        e?.response?.data?.error ||
-        (Array.isArray(e?.response?.data?.errors) ? e.response.data.errors[0] : null) ||
-        e?.message ||
-        "Failed to delete diagram. Please try again.";
-      setDeleteStatus({ loading: false, error: msg });
-      toast.error(msg, { id: toastId });
+    });
+
+    if (result.skipped) return;
+
+    if (!result.ok) {
+      const message = getErrorMessage(result.error, "Failed to delete car");
+      setDeleteError(message);
+      toast.error(message, { id: "diagram-delete" });
       return;
     }
-    setDeleteStatus({ loading: false, error: "" });
+
+    closeDeleteConfirm();
+    toast.success("Car deleted successfully", { id: "diagram-delete" });
+    await load();
   };
 
   const metrics = useMemo(() => {
@@ -145,6 +217,7 @@ const DiagramManagementPage = () => {
             onEditDiagram={openEditModal}
             onAssignMarker={openMarkerModal}
             onDeleteDiagram={openDeleteConfirm}
+            pendingDeleteId={isPending(deleteActionKey) ? confirmState.diagram?.id : null}
           />
         </SectionCard>
       </PageContainer>
@@ -155,6 +228,8 @@ const DiagramManagementPage = () => {
         initialValues={entryModalState.diagram}
         onClose={closeEntryModal}
         onSubmit={handleSaveDiagram}
+        isSubmitting={isPending(entryActionKey)}
+        submitError={entrySubmitError}
       />
 
       <AssignBatteryMarkerModal
@@ -162,6 +237,8 @@ const DiagramManagementPage = () => {
         diagram={markerModalState.diagram}
         onClose={closeMarkerModal}
         onSave={handleSaveMarker}
+        isSaving={isPending(markerActionKey)}
+        saveError={markerSubmitError}
       />
 
       <ConfirmDialog
@@ -173,9 +250,9 @@ const DiagramManagementPage = () => {
         confirmLabel="Delete Diagram"
         cancelLabel="Cancel"
         variant="danger"
-        loading={deleteStatus.loading}
+        loading={isPending(deleteActionKey)}
         loadingLabel="Deleting..."
-        errorText={deleteStatus.error}
+        errorText={deleteError}
       />
     </>
   );

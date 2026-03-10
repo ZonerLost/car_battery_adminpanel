@@ -36,6 +36,7 @@ const DiagramOverviewTable = ({
   onEditDiagram,
   onAssignMarker,
   onDeleteDiagram,
+  pendingDeleteId = null,
 }) => {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -85,15 +86,31 @@ const DiagramOverviewTable = ({
       label: "Actions",
       render: (row) => (
         <div className="flex items-center gap-1">
-          <IconButton size="sm" onClick={() => onEditDiagram(row)}>
+          <IconButton
+            size="sm"
+            onClick={() => onEditDiagram(row)}
+            disabled={pendingDeleteId === row.id}
+          >
             <FiEdit2 className="text-[13px]" />
           </IconButton>
 
-          <IconButton size="sm" onClick={() => onAssignMarker(row)} title="Assign Marker">
+          <IconButton
+            size="sm"
+            onClick={() => onAssignMarker(row)}
+            title="Assign Marker"
+            disabled={pendingDeleteId === row.id}
+          >
             <PiBatteryChargingBold className="text-[14px]" />
           </IconButton>
 
-          <IconButton size="sm" variant="danger" onClick={() => onDeleteDiagram(row)}>
+          <IconButton
+            size="sm"
+            variant="danger"
+            onClick={() => onDeleteDiagram(row)}
+            isLoading={pendingDeleteId === row.id}
+            loadingText={null}
+            disabled={pendingDeleteId === row.id}
+          >
             <FiTrash2 className="text-[13px]" />
           </IconButton>
         </div>
