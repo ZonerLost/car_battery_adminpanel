@@ -30,8 +30,6 @@ function loadSeed(filePath) {
   return data;
 }
 
-// Firestore doc IDs cannot contain "/" and have length limits.
-// We use a stable hash of the record key (make:model:yearStart-yearEnd).
 function docIdForKey(key) {
   const h = crypto.createHash("sha1").update(String(key)).digest("hex");
   return `loc_${h}`;
