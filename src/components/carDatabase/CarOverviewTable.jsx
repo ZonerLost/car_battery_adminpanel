@@ -37,45 +37,17 @@ const CarOverviewTable = ({
   onAssignMarker,
   pendingRowAction = null,
 }) => {
-  const [showYearFilter, setShowYearFilter] = useState(false);
   const [searchValue, setSearchValue] = useState(filters.search || "");
-  const [makeValue, setMakeValue] = useState(filters.make || "");
-  const [yearFromInput, setYearFromInput] = useState(filters.yearFrom || "");
-  const [yearToInput, setYearToInput] = useState(filters.yearTo || "");
 
   useEffect(() => setSearchValue(filters.search || ""), [filters.search]);
-  useEffect(() => setMakeValue(filters.make || ""), [filters.make]);
-  useEffect(() => {
-    setYearFromInput(filters.yearFrom || "");
-    setYearToInput(filters.yearTo || "");
-  }, [filters.yearFrom, filters.yearTo]);
 
   const debouncedSearch = useDebounce(searchValue, 300);
-  const debouncedMake = useDebounce(makeValue, 300);
 
   useEffect(() => {
     if (debouncedSearch !== filters.search) {
       onFilterChange && onFilterChange({ search: debouncedSearch });
     }
   }, [debouncedSearch, filters.search, onFilterChange]);
-
-  useEffect(() => {
-    if (debouncedMake !== filters.make) {
-      onFilterChange && onFilterChange({ make: debouncedMake });
-    }
-  }, [debouncedMake, filters.make, onFilterChange]);
-
-  const applyYearFilter = () => {
-    onFilterChange && onFilterChange({ yearFrom: yearFromInput, yearTo: yearToInput });
-    setShowYearFilter(false);
-  };
-
-  const clearYearFilter = () => {
-    setYearFromInput("");
-    setYearToInput("");
-    onFilterChange && onFilterChange({ yearFrom: "", yearTo: "" });
-    setShowYearFilter(false);
-  };
 
   const getRowActionState = useCallback((rowId) => {
     if (!pendingRowAction?.carId || pendingRowAction.carId !== rowId) {
@@ -209,7 +181,7 @@ const CarOverviewTable = ({
         searchValue={searchValue}
         onSearchChange={setSearchValue}
         leftContent={
-          <div className="flex flex-wrap items-center gap-2 relative">
+          <div className="flex flex-wrap items-center gap-2">
             <select
               className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#E53935]"
               value={filters.status}
@@ -220,57 +192,7 @@ const CarOverviewTable = ({
               <option value="inactive">Inactive</option>
             </select>
 
-            <input
-              value={makeValue}
-              onChange={(e) => setMakeValue(e.target.value)}
-              placeholder="Make"
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#E53935]"
-            />
 
-            <button
-              type="button"
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600 hover:bg-slate-50"
-              onClick={() => setShowYearFilter((s) => !s)}
-            >
-              Year Range
-            </button>
-
-            {showYearFilter && (
-              <div className="absolute z-20 top-11 left-0 w-80 rounded-xl border border-slate-200 bg-white shadow-lg p-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    value={yearFromInput}
-                    onChange={(e) => setYearFromInput(e.target.value)}
-                    placeholder="From (e.g. 2005)"
-                    className="rounded-lg border border-slate-200 px-3 py-2 text-[11px] focus:outline-none focus:ring-1 focus:ring-[#E53935]"
-                  />
-                  <input
-                    value={yearToInput}
-                    onChange={(e) => setYearToInput(e.target.value)}
-                    placeholder="To (e.g. 2010)"
-                    className="rounded-lg border border-slate-200 px-3 py-2 text-[11px] focus:outline-none focus:ring-1 focus:ring-[#E53935]"
-                  />
-                </div>
-
-                <div className="mt-3 flex items-center justify-between">
-                  <button
-                    type="button"
-                    className="text-[11px] text-slate-500 hover:text-slate-700"
-                    onClick={clearYearFilter}
-                  >
-                    Clear
-                  </button>
-
-                  <button
-                    type="button"
-                    className="rounded-lg bg-[#E53935] text-white px-3 py-2 text-[11px]"
-                    onClick={applyYearFilter}
-                  >
-                    Apply
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         }
         rightContent={
