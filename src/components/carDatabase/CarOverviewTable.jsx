@@ -192,7 +192,15 @@ const CarOverviewTable = ({
               <option value="inactive">Inactive</option>
             </select>
 
-
+            <select
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#E53935]"
+              value={filters.diagram || "all"}
+              onChange={(e) => onFilterChange && onFilterChange({ diagram: e.target.value })}
+            >
+              <option value="all">Diagram</option>
+              <option value="uploaded">Uploaded</option>
+              <option value="missing">Missing</option>
+            </select>
           </div>
         }
         rightContent={

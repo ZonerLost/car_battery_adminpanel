@@ -326,6 +326,21 @@ export async function fetchCarsPage({ pageSize = 25, cursor = null, filters = {}
         if (yearFrom != null && row.yearTo != null && row.yearTo < yearFrom) return false;
         if (yearTo != null && row.yearFrom != null && row.yearFrom > yearTo) return false;
         return true;
+      })
+      .filter((row) => {
+        if (!filters.diagram || filters.diagram === "all") return true;
+        return row.diagramStatus === filters.diagram;
+      })
+      .filter((row) => {
+        if (!filters.timeRange || filters.timeRange === "all") return true;
+        const now = new Date();
+        let cutoff = null;
+        if (filters.timeRange === "thisMonth") cutoff = new Date(now.getFullYear(), now.getMonth(), 1);
+        else if (filters.timeRange === "last3Months") cutoff = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+        else if (filters.timeRange === "thisYear") cutoff = new Date(now.getFullYear(), 0, 1);
+        if (!cutoff) return true;
+        const createdAt = row.createdAt instanceof Date ? row.createdAt : row.createdAt?.toDate?.();
+        return createdAt ? createdAt >= cutoff : false;
       });
 
     const trimmedRows = rows.slice(0, normalizedPageSize);

@@ -26,8 +26,8 @@ import { getCarDatabaseCounts } from "../../api/stats/carDatabaseCounts.helper";
 import useAsyncAction from "../../hooks/useAsyncAction";
 import { getErrorMessage } from "../../utils/errorMessage";
 
-const RANGE_ORDER = ["thisMonth", "last90", "all"];
-const RANGE_LABELS = { thisMonth: "This Month", last90: "Last 90 Days", all: "All Time" };
+const RANGE_ORDER = ["thisMonth", "last3Months", "thisYear", "all"];
+const RANGE_LABELS = { thisMonth: "This Month", last3Months: "Last 3 Months", thisYear: "This Year", all: "All Time" };
 
 const normalizeYearInput = (value) => {
   if (value === null || value === undefined) return null;
@@ -48,6 +48,7 @@ const CarDatabasePage = () => {
   const [filters, setFilters] = useState({
     pageSize: 25,
     status: "all",
+    diagram: "all",
     make: "",
     yearFrom: "",
     yearTo: "",
@@ -58,7 +59,10 @@ const CarDatabasePage = () => {
   const [rangeIndex, setRangeIndex] = useState(0);
   const timeRange = RANGE_ORDER[rangeIndex];
   const rangeLabel = RANGE_LABELS[timeRange];
-  const cycleRange = () => setRangeIndex((i) => (i + 1) % RANGE_ORDER.length);
+
+  // ---------- Overview table time range ----------
+  const [overviewRangeIndex, setOverviewRangeIndex] = useState(2); // default "All Time"
+  const overviewTimeRange = RANGE_ORDER[overviewRangeIndex];
 
   const [counts, setCounts] = useState({ totalCars: 0, newCars: 0, diagramsUploaded: 0 });
   const [coverageByTypeData, setCoverageByTypeData] = useState([]);
@@ -144,10 +148,12 @@ const CarDatabasePage = () => {
           cursor: startCursor,
           filters: {
             status: filters.status,
+            diagram: filters.diagram,
             make: filters.make,
             yearFrom: normalizeYearInput(filters.yearFrom),
             yearTo: normalizeYearInput(filters.yearTo),
             search: filters.search,
+            timeRange: overviewTimeRange,
           },
         });
 
@@ -171,7 +177,7 @@ const CarDatabasePage = () => {
         setLoadingMore(false);
       }
     },
-    [filters]
+    [filters, overviewTimeRange]
   );
 
   useEffect(() => {
@@ -410,13 +416,15 @@ const CarDatabasePage = () => {
           <ChartCard
             title="Car Coverage By Type"
             rightSlot={
-              <button
-                type="button"
+              <select
                 className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600"
-                onClick={cycleRange}
+                value={timeRange}
+                onChange={(e) => setRangeIndex(RANGE_ORDER.indexOf(e.target.value))}
               >
-                {rangeLabel}
-              </button>
+                {RANGE_ORDER.map((r) => (
+                  <option key={r} value={r}>{RANGE_LABELS[r]}</option>
+                ))}
+              </select>
             }
           >
             <CarCoverageByTypeChart data={coverageByTypeData} />
@@ -425,20 +433,40 @@ const CarDatabasePage = () => {
           <ChartCard
             title="Car Coverage By Make"
             rightSlot={
-              <button
-                type="button"
+              <select
                 className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600"
-                onClick={cycleRange}
+                value={timeRange}
+                onChange={(e) => setRangeIndex(RANGE_ORDER.indexOf(e.target.value))}
               >
-                {rangeLabel}
-              </button>
+                {RANGE_ORDER.map((r) => (
+                  <option key={r} value={r}>{RANGE_LABELS[r]}</option>
+                ))}
+              </select>
             }
           >
             <CarCoverageByMakeChart data={coverageByMakeData} />
           </ChartCard>
         </div>
 
-        <SectionCard title="Overview" className="mt-5">
+        <SectionCard
+          title="Overview"
+          className="mt-5"
+          actions={
+            <select
+              className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600"
+              value={overviewTimeRange}
+              onChange={(e) => {
+                setOverviewRangeIndex(RANGE_ORDER.indexOf(e.target.value));
+                cursorStackRef.current = [];
+                setPage(1);
+              }}
+            >
+              {RANGE_ORDER.map((r) => (
+                <option key={r} value={r}>{RANGE_LABELS[r]}</option>
+              ))}
+            </select>
+          }
+        >
           <CarOverviewTable
             rows={rows}
             loading={loading}

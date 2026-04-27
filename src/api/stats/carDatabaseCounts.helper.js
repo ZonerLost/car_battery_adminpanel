@@ -20,11 +20,8 @@ const coverageDoc = (rangeKey) =>
 function getRangeCutoff(rangeKey) {
   const now = new Date();
   if (rangeKey === "thisMonth") return new Date(now.getFullYear(), now.getMonth(), 1);
-  if (rangeKey === "last90") {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 90);
-    return d;
-  }
+  if (rangeKey === "last3Months") return new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  if (rangeKey === "thisYear") return new Date(now.getFullYear(), 0, 1);
   return null;
 }
 
