@@ -1,5 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
 import PageContainer from "../../components/shared/PageContainer";
 import SectionCard from "../../components/shared/SectionCard";
 import ChartCard from "../../components/shared/ChartCard";
@@ -59,6 +60,7 @@ export default function FeedbackReportsPage() {
       (err) => {
         console.error(err);
         setLoading(false);
+        toast.error("Failed to load reports. Please refresh.");
       }
     );
 
@@ -224,6 +226,17 @@ export default function FeedbackReportsPage() {
     const { type, report } = confirmState;
     if (!report) return;
 
+    const successMessages = {
+      approve: "Report approved successfully.",
+      reject: "Report rejected.",
+      "delete-diagram": "Car diagram deleted.",
+    };
+    const errorMessages = {
+      approve: "Failed to approve report.",
+      reject: "Failed to reject report.",
+      "delete-diagram": "Failed to delete diagram.",
+    };
+
     try {
       if (type === "approve") {
         await approveReport(report.id);
@@ -233,10 +246,11 @@ export default function FeedbackReportsPage() {
         await deleteCarDiagramForReport({ carId: report.carId });
       }
 
-      // Snapshot will update UI automatically
       closeConfirm();
+      toast.success(successMessages[type] || "Action completed.");
     } catch (e) {
       console.error(e);
+      toast.error(errorMessages[type] || "Action failed. Please try again.");
     }
   };
 

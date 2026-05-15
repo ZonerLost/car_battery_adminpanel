@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import toast from "react-hot-toast";
 import FormRow from "../shared/FormRow";
 import TextField from "../shared/TextField";
 import Button from "../shared/Button";
@@ -23,7 +24,6 @@ const SettingsProfileForm = () => {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -95,7 +95,6 @@ const SettingsProfileForm = () => {
     if (loading) return;
 
     setSaving(true);
-    setSaved(false);
     try {
       await Promise.all([
         upsertPlatformProfile({
@@ -107,12 +106,12 @@ const SettingsProfileForm = () => {
           fullName: profileValues.fullName,
         }),
       ]);
-      setSaved(true);
+      toast.success("Settings saved successfully.");
     } catch (e) {
       console.error(e);
+      toast.error("Failed to save settings. Please try again.");
     } finally {
       setSaving(false);
-      setTimeout(() => setSaved(false), 2000);
     }
   };
 
@@ -158,9 +157,13 @@ const SettingsProfileForm = () => {
       </p>
 
       <div className="flex items-center justify-end gap-3">
-        {saved && <span className="text-[11px] text-green-600">Saved</span>}
-        <Button type="submit" disabled={saving}>
-          {saving ? "Saving..." : "Save Changes"}
+        <Button
+          type="submit"
+          disabled={saving}
+          isLoading={saving}
+          loadingText="Saving..."
+        >
+          Save Changes
         </Button>
       </div>
     </form>

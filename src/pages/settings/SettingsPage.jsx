@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
 
 import PageContainer from "../../components/shared/PageContainer";
 import SectionCard from "../../components/shared/SectionCard";
@@ -89,9 +90,10 @@ const SettingsPage = () => {
         role: values.role || DEFAULT_ROLE,
       });
       setIsAddUserOpen(false);
+      toast.success("Team member added successfully.");
     } catch (e) {
       console.error(e);
-      // optionally show toast
+      toast.error(e?.message || "Failed to add team member.");
     } finally {
       setSavingUser(false);
     }
@@ -108,8 +110,10 @@ const SettingsPage = () => {
         role: values.role || userToEdit.role || DEFAULT_ROLE,
       });
       setUserToEdit(null);
+      toast.success("Team member updated.");
     } catch (e) {
       console.error(e);
+      toast.error(e?.message || "Failed to update team member.");
     } finally {
       setSavingUser(false);
     }
@@ -124,8 +128,10 @@ const SettingsPage = () => {
     try {
       await updateTeamMember(userToDeactivate.uid, { status: "suspended" });
       setUserToDeactivate(null);
+      toast.success("User deactivated.");
     } catch (e) {
       console.error(e);
+      toast.error(e?.message || "Failed to deactivate user.");
     } finally {
       setSavingUser(false);
     }
@@ -136,8 +142,10 @@ const SettingsPage = () => {
     setSavingUser(true);
     try {
       await updateTeamMember(user.uid, { status: "active" });
+      toast.success("User activated.");
     } catch (e) {
       console.error(e);
+      toast.error(e?.message || "Failed to activate user.");
     } finally {
       setSavingUser(false);
     }
@@ -149,8 +157,10 @@ const SettingsPage = () => {
     try {
       await deleteTeamMember(userToRemove.uid);
       setUserToRemove(null);
+      toast.success("Team member removed.");
     } catch (e) {
       console.error(e);
+      toast.error(e?.message || "Failed to remove team member.");
     } finally {
       setSavingUser(false);
     }
@@ -160,16 +170,14 @@ const SettingsPage = () => {
     setBackfilling(true);
     try {
       const updatedCount = await backfillMissingUserRoles();
-      if (updatedCount > 0 && import.meta.env.DEV) {
-        console.log(`[backfill] added role=user to ${updatedCount} user(s)`);
-      }
       if (updatedCount > 0) {
-        window.alert(`Backfilled role=user for ${updatedCount} user(s).`);
+        toast.success(`Backfilled role=user for ${updatedCount} user(s).`);
       } else {
-        window.alert("All users already have a role field.");
+        toast("All users already have a role field.", { icon: "ℹ️" });
       }
     } catch (e) {
       console.error("Role backfill failed", e);
+      toast.error("Role backfill failed. Please try again.");
     } finally {
       setBackfilling(false);
     }

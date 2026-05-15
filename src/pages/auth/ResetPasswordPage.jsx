@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { confirmPasswordReset, verifyPasswordResetCode } from "firebase/auth";
+import toast from "react-hot-toast";
 import { auth } from "../../lib/firebase";
 import Button from "../../components/shared/Button";
 import TextField from "../../components/shared/TextField";
@@ -36,7 +37,9 @@ const ResetPasswordPage = () => {
         const mail = await verifyPasswordResetCode(auth, oobCode);
         setEmail(mail);
       } catch (e) {
-        setError("This reset link is invalid or expired. Please request a new one.");
+        const msg = "This reset link is invalid or expired. Please request a new one.";
+        setError(msg);
+        toast.error(msg);
       } finally {
         setChecking(false);
       }
@@ -63,8 +66,11 @@ const ResetPasswordPage = () => {
     try {
       await confirmPasswordReset(auth, oobCode, password);
       setDone(true);
+      toast.success("Password reset successfully! You can now sign in.");
     } catch (e) {
-      setError("Failed to reset password. Please request a new reset link.");
+      const msg = "Failed to reset password. Please request a new reset link.";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }
@@ -112,8 +118,14 @@ const ResetPasswordPage = () => {
               />
             </div>
 
-            <Button type="submit" fullWidth disabled={!canSubmit}>
-              {submitting ? "Resetting..." : "Reset Password"}
+            <Button
+              type="submit"
+              fullWidth
+              disabled={!canSubmit}
+              isLoading={submitting}
+              loadingText="Resetting..."
+            >
+              Reset Password
             </Button>
           </form>
         ) : null}

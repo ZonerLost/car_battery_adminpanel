@@ -1,10 +1,24 @@
 import { useState } from "react";
 import { FiMail, FiLock, FiEye, FiEyeOff } from "react-icons/fi";
 import { useNavigate, useLocation } from "react-router-dom";
+import toast from "react-hot-toast";
 import { useAuth } from "../../context/AuthContext";
 import Button from "../../components/shared/Button";
 import TextField from "../../components/shared/TextField";
 import ForgotPasswordModal from "../../components/auth/ForgotPasswordModal";
+
+const getAuthErrorMessage = (err) => {
+  const code = err?.code || "";
+  if (code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found")
+    return "Invalid email or password.";
+  if (code === "auth/too-many-requests")
+    return "Too many failed attempts. Please try again later.";
+  if (code === "auth/user-disabled")
+    return "This account has been disabled. Contact support.";
+  if (code === "auth/invalid-email")
+    return "Please enter a valid email address.";
+  return err?.message || "Sign in failed. Please try again.";
+};
 
 const LoginPage = () => {
   const [values, setValues] = useState({
@@ -32,10 +46,11 @@ const LoginPage = () => {
 
     try {
       await login(values.email, values.password);
+      toast.success("Signed in successfully!");
       navigate(from, { replace: true });
     } catch (err) {
       console.error(err);
-      // TODO: toast(err.message)
+      toast.error(getAuthErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -152,9 +167,11 @@ const LoginPage = () => {
                 type="submit"
                 fullWidth
                 disabled={isSubmitting}
+                isLoading={isSubmitting}
+                loadingText="Signing In..."
                 className="mt-2"
               >
-                {isSubmitting ? "Signing In..." : "Sign In"}
+                Sign In
               </Button>
 
 

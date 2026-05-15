@@ -137,8 +137,15 @@ const AddRoleModal = ({
           >
             Cancel
           </Button>
-          <Button type="submit" size="md" fullWidth disabled={loading}>
-            {loading ? "Saving..." : submitLabel}
+          <Button
+            type="submit"
+            size="md"
+            fullWidth
+            disabled={loading}
+            isLoading={loading}
+            loadingText="Saving..."
+          >
+            {submitLabel}
           </Button>
         </div>
       </form>

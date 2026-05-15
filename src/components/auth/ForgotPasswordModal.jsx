@@ -93,6 +93,7 @@
 // export default ForgotPasswordModal;
 
 import React, { useEffect, useState } from "react";
+import toast from "react-hot-toast";
 import Modal from "../../components/shared/Modal";
 import TextField from "../../components/shared/TextField";
 import Button from "../../components/shared/Button";
@@ -132,8 +133,11 @@ const ForgotPasswordModal = ({ isOpen, onClose, defaultEmail = "" }) => {
       setEmail(trimmedEmail);
       await sendCustomPasswordReset(trimmedEmail);
       setSent(true);
+      toast.success("Reset link sent! Check your inbox.");
     } catch (err) {
-      setError(err?.message || "Could not send reset email. Please try again.");
+      const msg = err?.message || "Could not send reset email. Please try again.";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -169,8 +173,14 @@ const ForgotPasswordModal = ({ isOpen, onClose, defaultEmail = "" }) => {
               <Button type="button" variant="secondary" fullWidth onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" fullWidth disabled={isSubmitting}>
-                {isSubmitting ? "Sending..." : "Send Reset Link"}
+              <Button
+                type="submit"
+                fullWidth
+                disabled={isSubmitting}
+                isLoading={isSubmitting}
+                loadingText="Sending..."
+              >
+                Send Reset Link
               </Button>
             </div>
           </>

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import toast from "react-hot-toast";
 import Modal from "../shared/Modal";
 import FormRow from "../shared/FormRow";
 import TextField from "../shared/TextField";
@@ -45,11 +46,18 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
     setLoading(true);
     try {
       await changeMyPassword({ currentPassword, newPassword });
+      toast.success("Password changed successfully.");
       onClose();
     } catch (err) {
       console.error(err);
-      // Common Firebase errors: auth/wrong-password, auth/requires-recent-login
-      setError(err?.message || "Failed to change password.");
+      const msg =
+        err?.code === "auth/wrong-password" || err?.code === "auth/invalid-credential"
+          ? "Current password is incorrect."
+          : err?.code === "auth/requires-recent-login"
+          ? "Please sign out and sign back in before changing your password."
+          : err?.message || "Failed to change password.";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -107,8 +115,15 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
           >
             Cancel
           </Button>
-          <Button type="submit" size="md" fullWidth disabled={loading}>
-            {loading ? "Saving..." : "Save & Continue"}
+          <Button
+            type="submit"
+            size="md"
+            fullWidth
+            disabled={loading}
+            isLoading={loading}
+            loadingText="Saving..."
+          >
+            Save & Continue
           </Button>
         </div>
       </form>
