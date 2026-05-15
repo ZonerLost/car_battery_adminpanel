@@ -4,7 +4,8 @@ import {
   signOut,
   getIdTokenResult,
 } from "firebase/auth";
-import { auth } from "../../lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "../../lib/firebase";
 
 export const isValidEmail = (email) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || "");
@@ -49,20 +50,31 @@ export async function signInAdmin(email, password) {
   try {
     const cred = await signInWithEmailAndPassword(auth, email, password);
 
-    // Force refresh claims (so admin claim is available)
+    // Force refresh claims
     const tokenResult = await getIdTokenResult(cred.user, true);
-    const isAdmin = !!tokenResult?.claims?.admin;
+    const hasAdminClaim = !!tokenResult?.claims?.admin;
 
-    if (!isAdmin) {
-      await signOut(auth);
-      throw new Error("Access denied. This account is not an admin.");
+    if (hasAdminClaim) {
+      return {
+        user: cred.user,
+        claims: tokenResult.claims,
+        token: await cred.user.getIdToken(),
+      };
     }
 
-    return {
-      user: cred.user,
-      claims: tokenResult.claims,
-      token: await cred.user.getIdToken(),
-    };
+    // Fallback: check Firestore role for admins added via Settings UI
+    // (custom claim requires Admin SDK and may not be set yet)
+    const userSnap = await getDoc(doc(db, "users", cred.user.uid));
+    if (userSnap.exists() && userSnap.data()?.role === "admin") {
+      return {
+        user: cred.user,
+        claims: { ...tokenResult.claims, admin: true },
+        token: await cred.user.getIdToken(),
+      };
+    }
+
+    await signOut(auth);
+    throw new Error("Access denied. This account is not an admin.");
   } catch (err) {
     throw new Error(normalizeFirebaseError(err));
   }

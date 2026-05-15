@@ -1,7 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, getIdTokenResult } from "firebase/auth";
-import { auth } from "../lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "../lib/firebase";
 import { signInAdmin, logout as fbLogout } from "../api/auth/authHelper";
 
 const AuthContext = createContext(null);
@@ -23,12 +24,22 @@ export const AuthProvider = ({ children }) => {
 
       const token = await user.getIdToken();
       const tokenResult = await getIdTokenResult(user);
-      setState({
-        user,
-        token,
-        claims: tokenResult?.claims || {},
-        loading: false,
-      });
+      let claims = tokenResult?.claims || {};
+
+      // Fallback: if no admin custom claim, check Firestore role
+      // (covers admins added via Settings UI before the custom claim is set)
+      if (!claims.admin) {
+        try {
+          const userSnap = await getDoc(doc(db, "users", user.uid));
+          if (userSnap.exists() && userSnap.data()?.role === "admin") {
+            claims = { ...claims, admin: true };
+          }
+        } catch {
+          // ignore — fallback unavailable
+        }
+      }
+
+      setState({ user, token, claims, loading: false });
     });
 
     return () => unsub();
