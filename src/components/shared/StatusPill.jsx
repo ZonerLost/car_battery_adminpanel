@@ -37,6 +37,12 @@ const STATUS_CONFIG = {
     text: "text-red-700",
     border: "border-red-200",
   },
+  info: {
+    label: "Info",
+    bg: "bg-blue-50",
+    text: "text-blue-700",
+    border: "border-blue-200",
+  },
 };
 
 const StatusPill = ({ status, label, className }) => {

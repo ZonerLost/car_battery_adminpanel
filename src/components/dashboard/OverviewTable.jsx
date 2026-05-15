@@ -94,8 +94,9 @@ const OverviewTable = ({
       label: "Diagram Status",
       render: (row) => {
         if (row.diagramStatus === "uploaded") return <StatusPill status="success" label="Uploaded" />;
-        if (row.diagramStatus === "missing") return <StatusPill status="missing" label="Missing" />;
-        return <span className="text-xs text-slate-600">-</span>;
+        if (row.diagramStatus === "template") return <StatusPill status="info" label="Template" />;
+        if (row.diagramStatus === "pending") return <StatusPill status="warning" label="Pending" />;
+        return <StatusPill status="missing" label="Missing" />;
       },
     },
     { key: "lastUploaded", label: "Last Uploaded" },
@@ -155,6 +156,8 @@ const OverviewTable = ({
             >
               <option value="all">Diagram</option>
               <option value="uploaded">Uploaded</option>
+              <option value="template">Template</option>
+              <option value="pending">Pending</option>
               <option value="missing">Missing</option>
             </select>
 

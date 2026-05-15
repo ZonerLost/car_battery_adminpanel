@@ -168,7 +168,14 @@ export function buildOverviewRows(cars = []) {
     const yt = Number(car?.yearTo ?? car?.year);
     const yearFrom = Number.isFinite(yf) ? yf : null;
     const yearTo = Number.isFinite(yt) ? yt : null;
-    const diagramStatus = car.diagramUrl ? "uploaded" : "missing";
+    const rawStatus = String(car.diagramStatus || "").trim().toLowerCase();
+    const diagramStatus = car.diagramUrl
+      ? "uploaded"
+      : car.templateId
+      ? "template"
+      : rawStatus === "pending"
+      ? "pending"
+      : "missing";
 
     return {
       id: car.id,
