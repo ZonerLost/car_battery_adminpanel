@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import PageContainer from "../../components/shared/PageContainer";
 import DashboardMetrics from "../../components/dashboard/DashboardMetrics";
@@ -15,9 +15,9 @@ import {
   buildCoverageByType,
   buildDashboardMetrics,
   buildMonthlyReportsTrend,
-  buildOverviewRows,
 } from "../../lib/dashboard/aggregateDashboard";
-import { deleteCarEntry } from "../../api/shared/carEntries.helper";
+import { fetchCarsPage, deleteCarEntry } from "../../api/shared/carEntries.helper";
+import { buildOverviewRows } from "../../lib/dashboard/aggregateDashboard";
 import useAsyncAction from "../../hooks/useAsyncAction";
 import { getErrorMessage } from "../../utils/errorMessage";
 
@@ -35,12 +35,54 @@ const RangeSelect = ({ value, onChange, options }) => (
   </select>
 );
 
+const TABLE_PAGE_SIZE = 25;
+
 const DashboardPage = () => {
   const { cars, reports, counts, loading, refresh } = useDashboardData();
 
   const [coverageRange, setCoverageRange] = useState("thisMonth");
   const [reportsRange, setReportsRange] = useState("thisYear");
 
+  // --- Overview table: independent server-side pagination ---
+  const [tableRows, setTableRows] = useState([]);
+  const [tableLoading, setTableLoading] = useState(true);
+  const [tablePage, setTablePage] = useState(1);
+  const [tableHasMore, setTableHasMore] = useState(false);
+  const cursorStackRef = useRef([]);
+
+  const loadTablePage = useCallback(async (targetPage, afterDelete = false) => {
+    const cursor = targetPage === 1 ? null : cursorStackRef.current[targetPage - 2] || null;
+    setTableLoading(true);
+    try {
+      const res = await fetchCarsPage({ pageSize: TABLE_PAGE_SIZE, cursor });
+      const rows = buildOverviewRows(res.rows || []);
+      setTableRows(rows);
+      setTableHasMore(res.hasMore);
+      cursorStackRef.current[targetPage - 1] = res.nextCursor || null;
+      if (!afterDelete) setTablePage(targetPage);
+    } catch (e) {
+      console.error("[dashboard-table] load failed", e);
+      toast.error("Failed to load car entries.");
+    } finally {
+      setTableLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadTablePage(1); }, [loadTablePage]);
+
+  const handleTableNext = useCallback(() => {
+    if (!tableHasMore || tableLoading) return;
+    loadTablePage(tablePage + 1);
+    setTablePage((p) => p + 1);
+  }, [tableHasMore, tableLoading, loadTablePage, tablePage]);
+
+  const handleTablePrev = useCallback(() => {
+    if (tablePage <= 1 || tableLoading) return;
+    loadTablePage(tablePage - 1);
+    setTablePage((p) => p - 1);
+  }, [tablePage, tableLoading, loadTablePage]);
+
+  // --- Delete confirm ---
   const [confirmState, setConfirmState] = useState({ open: false, row: null });
   const [confirmError, setConfirmError] = useState("");
   const { run, isPending } = useAsyncAction();
@@ -48,7 +90,6 @@ const DashboardPage = () => {
   const metrics = useMemo(() => buildDashboardMetrics(cars, reports, counts), [cars, reports, counts]);
   const coverageData = useMemo(() => buildCoverageByType(cars, coverageRange), [cars, coverageRange]);
   const reportsTrend = useMemo(() => buildMonthlyReportsTrend(reports, reportsRange), [reports, reportsRange]);
-  const tableRows = useMemo(() => buildOverviewRows(cars), [cars]);
   const confirmActionKey = confirmState.row?.id ? `dashboard-delete:${confirmState.row.id}` : null;
   const pendingDeleteId = isPending(confirmActionKey) ? confirmState.row?.id : null;
 
@@ -80,7 +121,7 @@ const DashboardPage = () => {
 
     closeDeleteConfirm();
     toast.success("Car deleted successfully", { id: "dashboard-delete-car" });
-    await refresh();
+    await Promise.all([refresh(), loadTablePage(tablePage, true)]);
   };
 
   return (
@@ -107,7 +148,11 @@ const DashboardPage = () => {
         <SectionCard title="Overview" className="mt-5">
           <OverviewTable
             rows={tableRows}
-            loading={loading}
+            loading={tableLoading}
+            page={tablePage}
+            hasMore={tableHasMore}
+            onNextPage={handleTableNext}
+            onPrevPage={handleTablePrev}
             onDeleteRow={openDeleteConfirm}
             pendingDeleteId={pendingDeleteId}
           />

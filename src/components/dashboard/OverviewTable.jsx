@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import TableToolbar from "../shared/TableToolbar";
 import DataTable from "../shared/DataTable";
-import Pagination from "../shared/Pagination";
 import StatusPill from "../shared/StatusPill";
 import IconButton from "../shared/IconButton";
 import { FiEdit2, FiTrash2 } from "react-icons/fi";
@@ -17,25 +16,22 @@ const DEFAULT_FILTERS = {
 const OverviewTable = ({
   rows = [],
   loading = false,
-  filters,
-  onFiltersChange,
+  page = 1,
+  hasMore = false,
+  onNextPage,
+  onPrevPage,
   onDeleteRow,
   onEditRow,
   pendingDeleteId = null,
 }) => {
   const [localFilters, setLocalFilters] = useState(DEFAULT_FILTERS);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(5);
   const [editOpen, setEditOpen] = useState(false);
   const [selectedRow, setSelectedRow] = useState(null);
 
-  const activeFilters = filters || localFilters;
+  const activeFilters = localFilters;
 
   const setFilter = (key, value) => {
-    const next = { ...activeFilters, [key]: value };
-    if (onFiltersChange) onFiltersChange(next);
-    else setLocalFilters(next);
-    setPage(1);
+    setLocalFilters((prev) => ({ ...prev, [key]: value }));
   };
 
   const yearOptions = useMemo(() => buildYearRangeOptions(rows), [rows]);
@@ -47,9 +43,7 @@ const OverviewTable = ({
     return rows.filter((row) => {
       const text = `${row.make} ${row.model}`.toLowerCase();
       const matchesSearch = !s || text.includes(s);
-
       const matchesDiagram = activeFilters.diagram === "all" || row.diagramStatus === activeFilters.diagram;
-      const matchesMarker = true;
 
       const rowFrom = Number.isFinite(row.yearFrom) ? row.yearFrom : Number.isFinite(row.yearTo) ? row.yearTo : null;
       const rowTo = Number.isFinite(row.yearTo) ? row.yearTo : rowFrom;
@@ -67,19 +61,16 @@ const OverviewTable = ({
           if (start == null && end == null) {
             matchesYear = false;
           } else {
-            const overlapStart = start ?? end;
-            const overlapEnd = end ?? start;
-            matchesYear = overlapStart <= to && overlapEnd >= from;
+            matchesYear = (start ?? end) <= to && (end ?? start) >= from;
           }
         }
       }
 
-      return matchesSearch && matchesDiagram && matchesMarker && matchesYear;
+      return matchesSearch && matchesDiagram && matchesYear;
     });
   }, [rows, activeFilters]);
 
-  const startIndex = (page - 1) * pageSize;
-  const pageRows = filtered.slice(startIndex, startIndex + pageSize);
+  const pageRows = filtered;
 
   const columns = [
     { key: "make", label: "Make" },
@@ -180,16 +171,25 @@ const OverviewTable = ({
         <DataTable columns={columns} data={pageRows} loading={loading} emptyMessage="No cars found" />
       </div>
 
-      <Pagination
-        page={page}
-        pageSize={pageSize}
-        total={filtered.length}
-        onPageChange={setPage}
-        onPageSizeChange={(size) => {
-          setPageSize(size);
-          setPage(1);
-        }}
-      />
+      <div className="flex items-center justify-between pt-1">
+        <span className="text-[11px] text-slate-500">Page {page}</span>
+        <div className="flex gap-2">
+          <button
+            onClick={onPrevPage}
+            disabled={page <= 1 || loading}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Previous
+          </button>
+          <button
+            onClick={onNextPage}
+            disabled={!hasMore || loading}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Next
+          </button>
+        </div>
+      </div>
 
       <EditRowModal
         isOpen={editOpen}
