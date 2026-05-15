@@ -1,5 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import React, { useEffect, useMemo, useState } from "react";
+import { FiAlertTriangle, FiInfo } from "react-icons/fi";
 import Modal from "../shared/Modal";
 import FormRow from "../shared/FormRow";
 import TextField from "../shared/TextField";
@@ -25,13 +26,27 @@ const AddRoleModal = ({
 }) => {
   const [values, setValues] = useState(emptyForm);
   const [error, setError] = useState("");
+  const [adminConfirmed, setAdminConfirmed] = useState(false);
 
   const title = useMemo(() => (mode === "edit" ? "Edit User" : "Add New User"), [mode]);
-  const submitLabel = useMemo(() => (mode === "edit" ? "Save Changes" : "Save & Continue"), [mode]);
+  const submitLabel = useMemo(() => (mode === "edit" ? "Save Changes" : "Add User"), [mode]);
+
+  const isPromotingToAdmin = useMemo(() => {
+    const previousRole = sanitizeRole(initialValues?.role || DEFAULT_ROLE);
+    return (
+      mode === "edit" &&
+      canEditRole &&
+      previousRole !== "admin" &&
+      sanitizeRole(values.role) === "admin"
+    );
+  }, [mode, canEditRole, initialValues?.role, values.role]);
+
+  const isNewAdmin = mode === "create" && sanitizeRole(values.role) === "admin";
 
   useEffect(() => {
     if (!isOpen) return;
     setError("");
+    setAdminConfirmed(false);
     setValues(
       initialValues
         ? {
@@ -43,6 +58,11 @@ const AddRoleModal = ({
         : emptyForm
     );
   }, [isOpen, initialValues]);
+
+  // Reset confirmation when role changes away from admin
+  useEffect(() => {
+    if (sanitizeRole(values.role) !== "admin") setAdminConfirmed(false);
+  }, [values.role]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -59,43 +79,48 @@ const AddRoleModal = ({
     const role = sanitizeRole(values.role || DEFAULT_ROLE);
 
     if (!name) return setError("Name is required.");
-    if (!email || !isValidEmail(email)) return setError("Enter a valid email.");
+    if (!email || !isValidEmail(email)) return setError("Enter a valid email address.");
 
-    const previousRole = sanitizeRole(initialValues?.role || DEFAULT_ROLE);
-    if (mode === "edit" && canEditRole && previousRole !== "admin" && role === "admin") {
-      const confirmed = window.confirm(
-        "Promote this user to admin? Admins get full access to the portal."
-      );
-      if (!confirmed) return;
+    if ((isPromotingToAdmin || isNewAdmin) && !adminConfirmed) {
+      return setError("Please confirm you understand the admin access note below.");
     }
 
-    const payload = { name, email, status, role: canEditRole ? role : previousRole };
+    const payload = { name, email, status, role: canEditRole ? role : sanitizeRole(initialValues?.role || DEFAULT_ROLE) };
     await onSubmit(payload);
   };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} size="md">
       <form onSubmit={handleSave} className="space-y-3">
+        {mode === "create" && (
+          <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+            <FiInfo className="mt-0.5 shrink-0 text-blue-500" size={13} />
+            <p className="text-[11px] text-blue-700 leading-relaxed">
+              A Firebase account will be created and a password-setup email will be sent to the user automatically.
+            </p>
+          </div>
+        )}
+
         <FormRow className="md:grid-cols-1">
           <TextField
-            label="Name"
+            label="Full Name"
             name="name"
             value={values.name}
             onChange={handleChange}
-            placeholder="Enter name i.e. Kashan"
+            placeholder="e.g. John Smith"
             disabled={loading}
           />
         </FormRow>
 
         <FormRow className="md:grid-cols-1">
           <TextField
-            label="Email"
+            label="Email Address"
             name="email"
             value={values.email}
             onChange={handleChange}
-            placeholder="Enter email i.e. maherkashan7@gmail.com"
+            placeholder="e.g. john@example.com"
             type="email"
-            disabled={loading}
+            disabled={loading || mode === "edit"}
           />
         </FormRow>
 
@@ -124,6 +149,32 @@ const AddRoleModal = ({
           />
         </FormRow>
 
+        {(isPromotingToAdmin || isNewAdmin) && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 space-y-2">
+            <div className="flex items-start gap-2">
+              <FiAlertTriangle className="mt-0.5 shrink-0 text-amber-500" size={13} />
+              <p className="text-[11px] text-amber-800 leading-relaxed">
+                <strong>Admin access requires a custom Firebase claim.</strong> After creating this user,
+                go to <strong>Firebase Console → Authentication</strong> and run the{" "}
+                <code className="bg-amber-100 px-1 rounded text-[10px]">scripts/createAdmin.js</code> script
+                with this user's email to grant full admin panel access.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={adminConfirmed}
+                onChange={(e) => setAdminConfirmed(e.target.checked)}
+                disabled={loading}
+                className="rounded border-amber-400 accent-amber-500"
+              />
+              <span className="text-[11px] text-amber-800 font-medium">
+                I understand — I'll set the admin claim manually
+              </span>
+            </label>
+          </div>
+        )}
+
         {error ? <p className="text-xs text-red-600">{error}</p> : null}
 
         <div className="mt-4 flex flex-col sm:flex-row justify-between gap-2">
@@ -143,7 +194,7 @@ const AddRoleModal = ({
             fullWidth
             disabled={loading}
             isLoading={loading}
-            loadingText="Saving..."
+            loadingText={mode === "create" ? "Creating..." : "Saving..."}
           >
             {submitLabel}
           </Button>

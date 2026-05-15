@@ -1,4 +1,4 @@
-import { auth, db } from "../../lib/firebase"; //
+import { auth, db } from "../../lib/firebase";
 
 import {
   collection,
@@ -19,6 +19,8 @@ import {
   reauthenticateWithCredential,
   updatePassword,
 } from "firebase/auth";
+
+import { createAuthUser, sendPasswordSetupEmail } from "../../lib/firebaseSecondary";
 
 import {
   DEFAULT_ROLE,
@@ -114,31 +116,45 @@ export function subscribeTeamMembers(onData, onError) {
   );
 }
 
-//  Create member doc with uid = docId and save required fields
 export async function createTeamMember({
   fullName,
   email,
   status = "active",
   role = DEFAULT_ROLE,
 }) {
-  const usersRef = collection(db, USERS_COL);
-  const newRef = doc(usersRef); // auto-id
-  const uid = newRef.id;
+  const normalizedEmail = String(email || "").trim().toLowerCase();
 
-  await setDoc(
-    newRef,
-    {
+  // 1. Create a real Firebase Auth account via secondary app so the current
+  //    admin session is not interrupted.
+  const uid = await createAuthUser(normalizedEmail);
+
+  // 2. Write the Firestore doc keyed by the real Firebase Auth UID.
+  const ref = doc(db, USERS_COL, uid);
+  try {
+    await setDoc(ref, {
       uid,
       fullName: String(fullName || "").trim(),
-      email: String(email || "").trim().toLowerCase(),
+      email: normalizedEmail,
       status: sanitizeStatus(status || "active"),
       role: sanitizeRole(role),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-      // optional UI field (remove if you want strictly ONLY 4 fields)
-    },
-    { merge: true }
-  );
+    });
+  } catch (firestoreErr) {
+    // Firestore write failed — the Auth account was already created.
+    // We can't delete it from the client, so surface a clear error.
+    throw new Error(
+      "User account was created in Firebase Auth but the profile could not be saved. " +
+        "Please remove the orphaned account from Firebase Console → Authentication."
+    );
+  }
+
+  // 3. Send a password-setup email so the new user can set their credentials.
+  try {
+    await sendPasswordSetupEmail(normalizedEmail, auth);
+  } catch {
+    // Non-fatal — user was created, email just didn't send.
+  }
 
   return uid;
 }

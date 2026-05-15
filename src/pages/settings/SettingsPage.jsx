@@ -90,7 +90,7 @@ const SettingsPage = () => {
         role: values.role || DEFAULT_ROLE,
       });
       setIsAddUserOpen(false);
-      toast.success("Team member added successfully.");
+      toast.success(`Account created! Password-setup email sent to ${values.email}`, { duration: 5000 });
     } catch (e) {
       console.error(e);
       toast.error(e?.message || "Failed to add team member.");
