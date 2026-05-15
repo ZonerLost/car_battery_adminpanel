@@ -46,14 +46,9 @@ const CarEntryModal = ({
 }) => {
   const [values, setValues] = useState(() => buildFormValues(mode, initialValues));
 
-  const [thumbnailFile, setThumbnailFile] = useState(null);
-  const [diagramFile, setDiagramFile] = useState(null);
-
   useEffect(() => {
     if (!isOpen) return;
     setValues(buildFormValues(mode, initialValues));
-    setThumbnailFile(null);
-    setDiagramFile(null);
   }, [isOpen, mode, initialValues]);
 
   const templatePreview = useMemo(() => {
@@ -87,17 +82,12 @@ const CarEntryModal = ({
       templateId: inferTemplateId(values.bodyType),
     };
 
-    await onSubmit?.(payload, { thumbnailFile, diagramFile });
+    await onSubmit?.(payload, {});
   };
 
   const title = mode === "edit" ? "Edit Car Entry" : "Add New Car Entry";
   const primaryLabel = mode === "edit" ? "Save Changes" : "Add Car";
-  const submitLoadingLabel =
-    mode === "edit"
-      ? diagramFile
-        ? "Uploading..."
-        : "Updating..."
-      : "Saving...";
+  const submitLoadingLabel = mode === "edit" ? "Updating..." : "Saving...";
 
   return (
     <Modal
@@ -198,104 +188,25 @@ const CarEntryModal = ({
           disabled={isSubmitting}
         />
 
-        {/* Thumbnail upload */}
-        <div>
-          <div className="flex items-center gap-1 mb-2">
-            <span className="text-[11px] font-medium text-slate-700">Upload Car Image (thumbnail)</span>
-            <span className="text-[11px] text-slate-400">(optional)</span>
-          </div>
-
-          <div className="flex flex-wrap gap-3 items-center">
-            {thumbnailFile ? (
-              <div className="w-56 rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-[10px]">
-                <div className="truncate">{thumbnailFile.name}</div>
-                <div className="text-[10px] text-slate-400">{(thumbnailFile.size / 1024).toFixed(1)} KB</div>
-              </div>
-            ) : null}
-
-            <label
-              className={`w-12 h-12 flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-xl text-slate-400 ${
-                isSubmitting ? "cursor-not-allowed opacity-60" : "cursor-pointer"
-              }`}
-            >
-              +
-              <input
-                type="file"
-                className="hidden"
-                accept=".png,.jpg,.jpeg,.webp"
-                disabled={isSubmitting}
-                onChange={(e) => setThumbnailFile(e.target.files?.[0] || null)}
-              />
-            </label>
-
-            {mode === "edit" && initialValues?.thumbnailUrl ? (
-              <span className="text-[11px] text-slate-500">Existing thumbnail uploaded. Uploading again will replace it.</span>
-            ) : null}
-          </div>
-        </div>
-
-        {/* Diagram preview + optional upload override */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
+        {/* Diagram preview (template only) */}
+        {effectiveDiagramPreview ? (
+          <div>
+            <div className="flex items-center gap-2 mb-2">
               <span className="text-[11px] font-medium text-slate-700">Battery Diagram</span>
-              <span className="text-[11px] text-slate-500">
-                {initialValues?.diagramUrl ? "(Using uploaded diagram)" : "(Using template by body type)"}
-              </span>
+              <span className="text-[11px] text-slate-500">(template by body type)</span>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="relative w-28 h-44 rounded-lg bg-white border border-slate-200 overflow-hidden">
+                <img
+                  src={effectiveDiagramPreview}
+                  alt="Diagram preview"
+                  className="absolute inset-0 w-full h-full object-contain"
+                  draggable={false}
+                />
+              </div>
             </div>
           </div>
-
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-            {effectiveDiagramPreview ? (
-              <div className="flex gap-3 items-start">
-                <div className="relative w-28 h-44 rounded-lg bg-white border border-slate-200 overflow-hidden">
-                  <img
-                    src={effectiveDiagramPreview}
-                    alt="Diagram preview"
-                    className="absolute inset-0 w-full h-full object-contain"
-                    draggable={false}
-                  />
-                </div>
-
-                <div className="flex-1">
-                  <div className="text-[11px] text-slate-600">
-                    Upload a custom diagram only if template is not correct (optional).
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap gap-3 items-center">
-                    {diagramFile ? (
-                      <div className="w-56 rounded-lg border border-slate-200 bg-white px-2 py-2 text-[10px]">
-                        <div className="truncate">{diagramFile.name}</div>
-                        <div className="text-[10px] text-slate-400">{(diagramFile.size / 1024).toFixed(1)} KB</div>
-                      </div>
-                    ) : null}
-
-                    <label
-                      className={`w-12 h-12 flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-xl text-slate-400 ${
-                        isSubmitting ? "cursor-not-allowed opacity-60" : "cursor-pointer"
-                      }`}
-                    >
-                      +
-                      <input
-                        type="file"
-                        className="hidden"
-                        accept=".png,.jpg,.jpeg,.svg,.webp"
-                        disabled={isSubmitting}
-                        onChange={(e) => setDiagramFile(e.target.files?.[0] || null)}
-                      />
-                    </label>
-
-                    {mode === "edit" && initialValues?.diagramUrl ? (
-                      <span className="text-[11px] text-slate-500">Uploading again will replace the existing diagram.</span>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-[11px] text-slate-500">No template found for this body type.</div>
-            )}
-          </div>
-        </div>
+        ) : null}
 
         <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-between">
           <Button type="button" variant="secondary" fullWidth onClick={onClose} disabled={isSubmitting}>
